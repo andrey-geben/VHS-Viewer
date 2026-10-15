@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>О программе — VHS-Viewer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #14161a; color: #e8e8e8;
+            margin: 0; padding: 40px 20px;
+            display: flex; justify-content: center;
+        }
+        .card {
+            background: #1e2126; border: 1px solid #2a2f37;
+            border-radius: 8px; padding: 24px;
+            max-width: 640px; width: 100%;
+        }
+        h2 { margin-top: 0; color: #4da3ff; }
+        h3 { margin-top: 24px; color: #cfd6e0; }
+        table { width: 100%; border-collapse: collapse; }
+        td { padding: 8px 0; border-bottom: 1px solid #2a2f37; }
+        td:first-child { color: #8b96a5; width: 40%; }
+        .muted { color: #8b96a5; line-height: 1.6; }
+        a { color: #6cb2ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .back {
+            display: inline-block; margin-top: 20px;
+            padding: 6px 14px; background: #3a4150;
+            border-radius: 4px; color: #fff;
+        }
+        ul { line-height: 1.8; color: #8b96a5; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h2>О программе</h2>
+
+    <table>
+        <tr><td>Название</td><td><b>VHS-Viewer</b></td></tr>
+        <tr><td>Версия</td><td><b>{{ info.version }}</b></td></tr>
+        <tr><td>Автор</td><td><b>{{ info.author }}</b></td></tr>
+        <tr><td>Copyright</td><td>{{ info.copyright }}</td></tr>
+        <tr><td>Лицензия</td><td>{{ info.license }}</td></tr>
+        <tr><td>Сайт</td><td><a href="{{ info.url }}" target="_blank">{{ info.url }}</a></td></tr>
+    </table>
+
+    <h3>Назначение</h3>
+    <p class="muted">
+        Компактный веб-клиент для просмотра потоков VHS-Streamer.
+        Показывает сетку WebRTC-потоков в браузере. Без авторизации,
+        без записи — только трансляция.
+    </p>
+
+    <h3>Технологии</h3>
+    <ul>
+        <li>Python 3.12, Flask 3.0</li>
+        <li>WebRTC через MediaMTX</li>
+        <li>PyInstaller — сборка .exe</li>
+    </ul>
+
+    <h3>Лицензионное соглашение</h3>
+    <p class="muted">
+        Программное обеспечение является собственностью автора.
+        Любое копирование, распространение, модификация или использование
+        без письменного разрешения автора запрещены.
+    </p>
+    <p class="muted">
+        ПО предоставляется «как есть», без каких-либо гарантий.
+        Автор не несёт ответственности за любой ущерб, возникший
+        в результате использования программы.
+    </p>
+
+    <a class="back" href="/">← Назад к просмотру</a>
+</div>
+</body>
+</html>

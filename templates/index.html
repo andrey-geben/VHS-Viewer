@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>{{ cfg.title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
+    <style>
+        * { box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #14161a;
+            color: #e8e8e8;
+            overflow: hidden;
+        }
+        header {
+            height: 44px;
+            padding: 0 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #1e2126;
+            border-bottom: 1px solid #2a2f37;
+        }
+        header .title { font-weight: 600; }
+        header .actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        header .actions button,
+        header .actions a.btn-link {
+            background: #2a6df4; color: #fff;
+            border: none; border-radius: 4px;
+            padding: 6px 12px; cursor: pointer;
+            font-size: 0.9em; text-decoration: none;
+            display: inline-block;
+        }
+        header .actions button.secondary,
+        header .actions a.btn-link.secondary {
+            background: #3a4150;
+        }
+        header .actions button:hover,
+        header .actions a.btn-link:hover { opacity: 0.9; }
+        #clock { color: #8b96a5; font-size: 0.9em; margin-right: 8px; }
+        .user-badge {
+            color: #8b96a5; font-size: 0.85em;
+            padding: 3px 8px; background: #14161a;
+            border-radius: 4px; margin-right: 4px;
+        }
+
+        #grid {
+            display: grid;
+            gap: 2px;
+            padding: 2px;
+            height: calc(100vh - 44px - 26px);
+            background: #000;
+        }
+        #grid.layout-1x1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+        #grid.layout-2x2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        #grid.layout-3x3 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; }
+        #grid.layout-4x4 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); }
+        #grid.layout-auto {
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            grid-auto-rows: minmax(200px, 1fr);
+        }
+
+        .cam-cell {
+            position: relative;
+            background: #000;
+            overflow: hidden;
+            border-radius: 3px;
+        }
+        .cam-cell iframe {
+            width: 100%; height: 100%;
+            border: 0; display: block;
+        }
+        .cam-label {
+            position: absolute; top: 6px; left: 6px;
+            background: rgba(0,0,0,0.6); color: #fff;
+            padding: 2px 8px; border-radius: 3px;
+            font-size: 0.8em; pointer-events: none;
+            z-index: 2;
+        }
+        .cam-empty {
+            display: flex; align-items: center; justify-content: center;
+            color: #666; font-size: 0.95em;
+        }
+
+        footer {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            padding: 4px 12px;
+            background: #1e2126;
+            border-top: 1px solid #2a2f37;
+            color: #8b96a5;
+            font-size: 0.8em;
+            display: flex;
+            justify-content: space-between;
+            z-index: 50;
+        }
+        footer a { color: #6cb2ff; text-decoration: none; }
+
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.7); z-index: 100;
+            align-items: center; justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: #1e2126; border: 1px solid #2a2f37;
+            border-radius: 8px; padding: 20px;
+            width: 820px; max-width: 95vw;
+            max-height: 90vh; overflow-y: auto;
+        }
+        .modal h2 { margin-top: 0; }
+        .modal h3 {
+            margin-top: 24px; margin-bottom: 8px;
+            color: #cfd6e0;
+            border-bottom: 1px solid #2a2f37;
+            padding-bottom: 4px;
+        }
+        .modal label {
+            display: block; color: #8b96a5; font-size: 0.9em;
+            margin: 14px 0 4px;
+        }
+        .modal input[type=text],
+        .modal input[type=number],
+        .modal input[type=password],
+        .modal select {
+            width: 100%;
+            background: #14161a; color: #e8e8e8;
+            border: 1px solid #2a2f37; border-radius: 4px;
+            padding: 8px; font-size: 0.95em;
+            font-family: inherit;
+        }
+        .modal input:focus { outline: 1px solid #4da3ff; }
+        .modal table {
+            width: 100%; border-collapse: collapse;
+            margin-top: 8px;
+        }
+        .modal th, .modal td {
+            padding: 6px 8px;
+            text-align: left;
+            border-bottom: 1px solid #2a2f37;
+            font-size: 0.9em;
+        }
+        .modal th { color: #8b96a5; font-weight: normal; }
+        .modal .btn-sm {
+            background: #2a6df4; color: #fff; border: none;
+            border-radius: 3px; padding: 4px 10px;
+            cursor: pointer; font-size: 0.85em;
+        }
+        .modal .btn-sm.secondary { background: #3a4150; }
+        .modal .btn-sm.danger { background: #b13a3a; }
+        .modal .buttons {
+            display: flex; justify-content: flex-end; gap: 8px;
+            margin-top: 20px;
+        }
+        .modal .buttons button {
+            padding: 8px 16px; border: none; border-radius: 4px;
+            cursor: pointer; font-size: 0.95em;
+        }
+        .btn-primary { background: #2a6df4; color: #fff; }
+        .btn-secondary { background: #3a4150; color: #fff; }
+        .hint {
+            color: #8b96a5; font-size: 0.85em;
+            margin-top: 6px; line-height: 1.5;
+        }
+        .status-ok  { color: #57d87a; font-size: 0.85em; }
+        .status-err { color: #f16a6a; font-size: 0.85em; }
+        .muted { color: #8b96a5; font-size: 0.85em; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="title" id="app-title">{{ cfg.title }}</div>
+    <div class="actions">
+        <span id="clock"></span>
+        {% if user %}
+            <span class="user-badge" title="Роль: {{ user.role }}">
+                {{ user.username }}{% if user.role == 'viewer' %} (просмотр){% endif %}
+            </span>
+        {% endif %}
+        <button class="secondary" onclick="toggleFullscreen()" title="Полный экран">⛶</button>
+        {% if user and user.role == 'admin' %}
+            <button onclick="openSettings()">⚙ Настройки</button>
+        {% endif %}
+        <a class="btn-link secondary" href="/logout">Выход</a>
+    </div>
+</header>
+
+<div id="grid"></div>
+
+<footer>
+    <span>{{ app_footer }}</span>
+    <a href="/about">О программе</a>
+</footer>
+
+<!-- ============= МОДАЛКА НАСТРОЕК ============= -->
+<div class="modal-overlay" id="settings-modal">
+    <div class="modal">
+        <h2>Настройки просмотра</h2>
+
+        <label>Заголовок окна</label>
+        <input type="text" id="cfg-title" placeholder="VHS-Viewer">
+
+        <label>Раскладка</label>
+        <select id="cfg-layout">
+            <option value="1x1">1 × 1 — одна камера</option>
+            <option value="2x2">2 × 2 — четыре</option>
+            <option value="3x3">3 × 3 — девять</option>
+            <option value="4x4">4 × 4 — шестнадцать</option>
+            <option value="auto">Авто — по размеру окна</option>
+        </select>
+
+        <!-- ============ СЕРВЕРЫ ============ -->
+        <h3>Серверы VHS-Streamer</h3>
+        <p class="hint">
+            Укажите адреса серверов — VHS-Viewer автоматически подтянет
+            с них список потоков. Если серверов нет или они недоступны,
+            потоки можно добавить вручную ниже.
+        </p>
+
+        <table id="servers-table">
+            <thead>
+                <tr>
+                    <th style="width:30%">Имя</th>
+                    <th style="width:45%">URL</th>
+                    <th style="width:25%">Действия</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <button class="btn-sm secondary" type="button"
+                onclick="addServerRow()" style="margin-top:8px">
+            + Добавить сервер
+        </button>
+
+        <div style="margin-top:12px">
+            <button class="btn-sm" type="button" onclick="refreshStreams()">
+                🔄 Обновить список потоков с серверов
+            </button>
+            <span class="muted" id="refresh-status" style="margin-left:10px"></span>
+        </div>
+
+        <!-- ============ ПОТОКИ ============ -->
+        <h3>Потоки для отображения</h3>
+        <p class="hint">
+            Отметьте галочками те потоки, которые нужно показывать.
+            Порядок строк = порядок ячеек в сетке.
+        </p>
+
+        <table id="streams-table">
+            <thead>
+                <tr>
+                    <th style="width:8%">Показ</th>
+                    <th style="width:30%">Название</th>
+                    <th style="width:50%">URL</th>
+                    <th style="width:12%"></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <button class="btn-sm secondary" type="button"
+                onclick="addStreamRow()" style="margin-top:8px">
+            + Добавить поток вручную
+        </button>
+
+        <!-- ============ БЕЗОПАСНОСТЬ ============ -->
+        {% if user and user.role == 'admin' %}
+        <h3>Безопасность</h3>
+        <p class="hint">
+            Управление пользователями VHS-Viewer. Роли: <b>admin</b> — полный
+            доступ, <b>viewer</b> — только просмотр.
+            Изменения применяются сразу после нажатия «Сохранить безопасность».
+        </p>
+
+        <div style="margin-bottom:12px">
+            <label style="display:inline-flex; align-items:center; gap:8px;
+                          color:#e8e8e8; font-size:0.95em; margin:0">
+                <input type="checkbox" id="sec-auth-enabled">
+                Требовать авторизацию при входе
+            </label>
+            <span class="muted" style="margin-left:12px">
+                если выключено — доступ открыт всем в сети
+            </span>
+        </div>
+
+        <div style="margin-bottom:12px">
+            <label style="display:inline-block; margin-right:8px;
+                          color:#8b96a5; font-size:0.9em">
+                Время жизни сессии (часов):
+            </label>
+            <input type="number" id="sec-session-lifetime" min="1" max="720"
+                   value="24" style="width:80px">
+        </div>
+
+        <table id="users-table">
+            <thead>
+                <tr>
+                    <th style="width:30%">Логин</th>
+                    <th style="width:35%">Пароль</th>
+                    <th style="width:20%">Роль</th>
+                    <th style="width:15%"></th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center">
+            <button class="btn-sm secondary" type="button"
+                    onclick="addUserRow()">
+                + Добавить пользователя
+            </button>
+            <button class="btn-sm" type="button"
+                    onclick="saveSecurityNow()">
+                💾 Сохранить безопасность
+            </button>
+            <span class="muted" id="sec-status"></span>
+        </div>
+        {% endif %}
+
+        <!-- ============ КНОПКИ ============ -->
+        <div class="buttons">
+            <button class="btn-secondary" onclick="closeSettings()">Отмена</button>
+            <button class="btn-primary" onclick="saveSettings()">Сохранить всё</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const currentConfig = {{ cfg | tojson }};
+
+// =====================================================================
+// Часы
+// =====================================================================
+function updateClock() {
+    const now = new Date();
+    document.getElementById('clock').textContent = now.toLocaleString('ru-RU', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// =====================================================================
+// Утилиты
+// =====================================================================
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;',
+        '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+
+// =====================================================================
+// Сетка
+// =====================================================================
+function renderGrid(streams, layout) {
+    const grid = document.getElementById('grid');
+    grid.className = 'layout-' + layout;
+    grid.innerHTML = '';
+
+    const visible = (streams || []).filter(s => s.enabled !== false);
+
+    if (visible.length === 0) {
+        const div = document.createElement('div');
+        div.className = 'cam-cell cam-empty';
+        div.textContent = 'Нет активных потоков. Откройте «Настройки», чтобы добавить.';
+        grid.appendChild(div);
+        return;
+    }
+
+    visible.forEach(s => {
+        const cell = document.createElement('div');
+        cell.className = 'cam-cell';
+
+        const label = document.createElement('div');
+        label.className = 'cam-label';
+        label.textContent = s.name;
+        cell.appendChild(label);
+
+        const iframe = document.createElement('iframe');
+        iframe.src = s.url;
+        iframe.setAttribute('allow', 'autoplay; fullscreen');
+        iframe.setAttribute('scrolling', 'no');
+        iframe.setAttribute('frameborder', '0');
+        cell.appendChild(iframe);
+
+        grid.appendChild(cell);
+    });
+}
+
+// =====================================================================
+// СЕРВЕРЫ — строки в таблице
+// =====================================================================
+function addServerRow(name, url) {
+    const tbody = document.querySelector('#servers-table tbody');
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+        '<td><input type="text" class="srv-name" value="' + escapeHtml(name || '') +
+            '" placeholder="Имя (необязательно)" style="width:100%"></td>' +
+        '<td><input type="text" class="srv-url" value="' + escapeHtml(url || '') +
+            '" placeholder="http://192.168.1.101:8000" style="width:100%"></td>' +
+        '<td>' +
+            '<button class="btn-sm secondary" type="button" ' +
+                'onclick="testServer(this)">Проверить</button> ' +
+            '<button class="btn-sm danger" type="button" ' +
+                'onclick="this.closest(\'tr\').remove()">✕</button>' +
+            '<div class="srv-status"></div>' +
+        '</td>';
+    tbody.appendChild(tr);
+}
+
+async function testServer(btn) {
+    const tr = btn.closest('tr');
+    const url = tr.querySelector('.srv-url').value.trim();
+    const statusEl = tr.querySelector('.srv-status');
+    if (!url) {
+        statusEl.className = 'status-err';
+        statusEl.textContent = 'URL пуст';
+        return;
+    }
+    statusEl.className = 'muted';
+    statusEl.textContent = 'проверяю...';
+    try {
+        const r = await fetch('/api/servers/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url }),
+        });
+        const data = await r.json();
+        if (data.ok) {
+            statusEl.className = 'status-ok';
+            statusEl.textContent =
+                '✓ ' + (data.server_name || 'сервер') +
+                ' (' + (data.streams_count || 0) + ' потоков)';
+        } else {
+            statusEl.className = 'status-err';
+            statusEl.textContent = '✗ ' + (data.error || 'ошибка');
+        }
+    } catch (e) {
+        statusEl.className = 'status-err';
+        statusEl.textContent = '✗ ' + e.message;
+    }
+}
+
+// =====================================================================
+// ПОТОКИ — строки в таблице
+// =====================================================================
+function addStreamRow(name, url, enabled, isNew) {
+    const tbody = document.querySelector('#streams-table tbody');
+    const tr = document.createElement('tr');
+    if (isNew) tr.dataset.isNew = '1';
+    const checked = (enabled !== false) ? ' checked' : '';
+    tr.innerHTML =
+        '<td style="text-align:center">' +
+            '<input type="checkbox" class="st-enabled"' + checked + '>' +
+        '</td>' +
+        '<td><input type="text" class="st-name" value="' + escapeHtml(name || '') +
+            '" placeholder="Название" style="width:100%"></td>' +
+        '<td><input type="text" class="st-url" value="' + escapeHtml(url || '') +
+            '" placeholder="http://192.168.1.101:8889/path/" style="width:100%"></td>' +
+        '<td>' +
+            '<button class="btn-sm danger" type="button" ' +
+                'onclick="this.closest(\'tr\').remove()">✕</button>' +
+        '</td>';
+    tbody.appendChild(tr);
+}
+
+async function refreshStreams() {
+    const statusEl = document.getElementById('refresh-status');
+    statusEl.className = 'muted';
+    statusEl.textContent = 'опрашиваю серверы...';
+
+    try {
+        const r = await fetch('/api/servers/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        const data = await r.json();
+
+        if (!data.ok) {
+            statusEl.className = 'status-err';
+            statusEl.textContent = 'ошибка: ' + (data.error || 'неизвестно');
+            return;
+        }
+
+        const loaded = data.streams || [];
+        const errors = data.errors || [];
+
+        const existingUrls = new Set();
+        document.querySelectorAll('#streams-table tbody tr').forEach(tr => {
+            const u = tr.querySelector('.st-url').value.trim();
+            if (u) existingUrls.add(u);
+        });
+
+        let added = 0;
+        loaded.forEach(s => {
+            if (existingUrls.has(s.url)) return;
+            addStreamRow(s.name, s.url, false, true);
+            added++;
+        });
+
+        let msg = 'загружено ' + loaded.length + ' потоков, добавлено ' + added;
+        if (errors.length > 0) {
+            msg += '; ошибки: ' + errors.map(e => e.server).join(', ');
+            statusEl.className = 'status-err';
+        } else {
+            statusEl.className = 'status-ok';
+        }
+        statusEl.textContent = msg;
+
+    } catch (e) {
+        statusEl.className = 'status-err';
+        statusEl.textContent = 'ошибка: ' + e.message;
+    }
+}
+
+// =====================================================================
+// Сбор данных из формы
+// =====================================================================
+function collectServers() {
+    const out = [];
+    document.querySelectorAll('#servers-table tbody tr').forEach(tr => {
+        const name = tr.querySelector('.srv-name').value.trim();
+        const url = tr.querySelector('.srv-url').value.trim();
+        if (!url) return;
+        out.push({ name: name || url, url: url });
+    });
+    return out;
+}
+
+function collectStreams() {
+    const out = [];
+    document.querySelectorAll('#streams-table tbody tr').forEach((tr, i) => {
+        const enabled = tr.querySelector('.st-enabled').checked;
+        const name = tr.querySelector('.st-name').value.trim();
+        const url = tr.querySelector('.st-url').value.trim();
+        if (!url) return;
+        out.push({
+            name: name || ('Камера ' + (i + 1)),
+            url: url,
+            enabled: enabled,
+        });
+    });
+    return out;
+}
+
+// =====================================================================
+// НАСТРОЙКИ — открытие/закрытие
+// =====================================================================
+function openSettings() {
+    document.getElementById('cfg-title').value = currentConfig.title || '';
+    document.getElementById('cfg-layout').value = currentConfig.layout || '2x2';
+
+    const srvTbody = document.querySelector('#servers-table tbody');
+    srvTbody.innerHTML = '';
+    (currentConfig.servers || []).forEach(s => addServerRow(s.name, s.url));
+
+    const stTbody = document.querySelector('#streams-table tbody');
+    stTbody.innerHTML = '';
+    (currentConfig.streams || []).forEach(s =>
+        addStreamRow(s.name, s.url, s.enabled !== false, false));
+
+    document.getElementById('refresh-status').textContent = '';
+
+    // Загружаем безопасность, если раздел есть в DOM (только admin)
+    if (document.getElementById('users-table')) {
+        loadSecurity();
+    }
+
+    document.getElementById('settings-modal').classList.add('active');
+}
+
+function closeSettings() {
+    document.getElementById('settings-modal').classList.remove('active');
+}
+
+async function saveSettings() {
+    const payload = {
+        title: (document.getElementById('cfg-title').value || '').trim() || 'VHS-Viewer',
+        layout: document.getElementById('cfg-layout').value,
+        servers: collectServers(),
+        streams: collectStreams(),
+    };
+
+    try {
+        const r = await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Ошибка сохранения');
+
+        Object.assign(currentConfig, data.config);
+        document.getElementById('app-title').textContent = currentConfig.title;
+        document.title = currentConfig.title;
+        renderGrid(currentConfig.streams, currentConfig.layout);
+        closeSettings();
+    } catch (e) {
+        alert('Не удалось сохранить: ' + e.message);
+    }
+}
+
+// =====================================================================
+// БЕЗОПАСНОСТЬ — управление пользователями
+// =====================================================================
+function renderUserRow(u) {
+    u = u || { username: '', password: '', role: 'admin' };
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+        '<td><input type="text" class="u-username" value="' +
+            escapeHtml(u.username) + '" style="width:100%"></td>' +
+        '<td><input type="text" class="u-password" value="' +
+            escapeHtml(u.password) + '" style="width:100%"></td>' +
+        '<td><select class="u-role" style="width:100%">' +
+            '<option value="admin"' + (u.role === 'admin' ? ' selected' : '') +
+                '>admin</option>' +
+            '<option value="viewer"' + (u.role === 'viewer' ? ' selected' : '') +
+                '>viewer</option>' +
+        '</select></td>' +
+        '<td>' +
+            '<button class="btn-sm secondary" type="button" ' +
+                'onclick="generateUserPassword(this)" ' +
+                'title="Сгенерировать случайный пароль">🎲</button> ' +
+            '<button class="btn-sm danger" type="button" ' +
+                'onclick="this.closest(\'tr\').remove()">✕</button>' +
+        '</td>';
+    return tr;
+}
+
+function addUserRow(u) {
+    document.querySelector('#users-table tbody').appendChild(renderUserRow(u));
+}
+
+function collectUsers() {
+    const out = [];
+    document.querySelectorAll('#users-table tbody tr').forEach(tr => {
+        out.push({
+            username: tr.querySelector('.u-username').value.trim(),
+            password: tr.querySelector('.u-password').value,
+            role: tr.querySelector('.u-role').value,
+        });
+    });
+    return out;
+}
+
+async function loadSecurity() {
+    try {
+        const r = await fetch('/api/security/config');
+        if (!r.ok) {
+            console.warn('loadSecurity: HTTP', r.status);
+            return;
+        }
+        const data = await r.json();
+        document.getElementById('sec-auth-enabled').checked = !!data.auth_enabled;
+        document.getElementById('sec-session-lifetime').value =
+            data.session_lifetime_hours || 24;
+
+        const tbody = document.querySelector('#users-table tbody');
+        tbody.innerHTML = '';
+        (data.users || []).forEach(u => addUserRow(u));
+    } catch (e) {
+        console.error('loadSecurity failed:', e);
+    }
+}
+
+async function generateUserPassword(btn) {
+    try {
+        const r = await fetch('/api/security/generate_password', {
+            method: 'POST',
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        const tr = btn.closest('tr');
+        tr.querySelector('.u-password').value = data.password;
+    } catch (e) {
+        alert('Не удалось сгенерировать пароль: ' + e.message);
+    }
+}
+
+async function saveSecurityNow() {
+    const statusEl = document.getElementById('sec-status');
+    statusEl.className = 'muted';
+    statusEl.textContent = 'сохраняю...';
+
+    const payload = {
+        users: collectUsers(),
+        auth_enabled: document.getElementById('sec-auth-enabled').checked,
+        session_lifetime_hours:
+            parseInt(document.getElementById('sec-session-lifetime').value) || 24,
+    };
+
+    try {
+        const r = await fetch('/api/security/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+
+        statusEl.className = 'status-ok';
+        statusEl.textContent = '✓ сохранено (' + data.users_count + ' пользователей)';
+        setTimeout(() => { statusEl.textContent = ''; }, 3000);
+    } catch (e) {
+        statusEl.className = 'status-err';
+        statusEl.textContent = '✗ ' + e.message;
+    }
+}
+
+// =====================================================================
+// Полный экран
+// =====================================================================
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+        document.exitFullscreen().catch(() => {});
+    }
+}
+
+// =====================================================================
+// Инициализация
+// =====================================================================
+renderGrid(currentConfig.streams, currentConfig.layout);
+document.title = currentConfig.title || 'VHS-Viewer';
+</script>
+
+</body>
+</html>
