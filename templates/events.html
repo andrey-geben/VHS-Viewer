@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>События — VHS-Viewer</title>
+    <style>
+        :root {
+            --bg: #14161a; --panel: #1e2126; --border: #2a2f37;
+            --text: #e8e8e8; --muted: #8b96a5; --accent: #4da3ff;
+            --ok: #4caf50; --warn: #f0ad4e; --danger: #e05252;
+            --cat-plate: #2c7a2c;
+            --cat-person: #b06d10;
+            --cat-vehicle: #1f5fa8;
+            --cat-animal: #8a2c2c;
+            --cat-object: #4a4a4a;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: Arial, sans-serif;
+            background: var(--bg); color: var(--text);
+        }
+        header {
+            display: flex; align-items: center; gap: 16px;
+            padding: 12px 20px; background: var(--panel);
+            border-bottom: 1px solid var(--border);
+        }
+        header h1 { font-size: 1.1em; margin: 0; color: var(--accent); }
+        header nav { display: flex; gap: 14px; margin-left: 20px; }
+        header nav a {
+            color: var(--text); text-decoration: none;
+            padding: 6px 10px; border-radius: 6px;
+            font-size: 0.92em;
+        }
+        header nav a:hover { background: #2a2f37; }
+        header nav a.active { background: #2a6df4; color: #fff; }
+        header .user { margin-left: auto; color: var(--muted); font-size: 0.9em; }
+        header .user b { color: var(--text); }
+
+        main { padding: 20px; max-width: 1300px; margin: 0 auto; }
+
+        /* ---- Панель фильтров ---- */
+        .filters {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 16px;
+            margin-bottom: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px 20px;
+            align-items: flex-end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .filter-group label.title {
+            color: var(--muted);
+            font-size: 0.8em;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .filter-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 14px;
+            background: #2a2f37;
+            color: #cfd6e0;
+            font-size: 0.85em;
+            cursor: pointer;
+            user-select: none;
+            border: 1px solid transparent;
+            transition: all 0.1s;
+        }
+        .chip:hover { background: #353b44; }
+        .chip input { display: none; }
+        .chip.checked {
+            background: #2a6df4;
+            color: #fff;
+            border-color: #4da3ff;
+        }
+        .chip-plate.checked   { background: var(--cat-plate); border-color: #4caf50; }
+        .chip-person.checked  { background: var(--cat-person); border-color: #f0ad4e; }
+        .chip-vehicle.checked { background: var(--cat-vehicle); border-color: #4da3ff; }
+        .chip-animal.checked  { background: var(--cat-animal); border-color: #e05252; }
+        .chip-object.checked  { background: var(--cat-object); border-color: #888; }
+
+        .filter-group select,
+        .filter-group input[type=text],
+        .filter-group input[type=number] {
+            background: #14161a;
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 7px 10px;
+            font-size: 0.9em;
+            font-family: inherit;
+        }
+        .filter-group select { min-width: 200px; }
+        .filter-group input[type=text] { min-width: 240px; }
+        .filter-group input[type=number] { width: 100px; }
+        .filter-group select:focus,
+        .filter-group input:focus { outline: 1px solid var(--accent); }
+
+        .filters .actions {
+            display: flex;
+            gap: 8px;
+            margin-left: auto;
+        }
+        .btn-filter {
+            padding: 7px 14px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .btn-filter.primary { background: #2a6df4; color: #fff; }
+        .btn-filter.secondary { background: #3a4150; color: #fff; }
+        .btn-filter.danger { background: var(--danger); color: #fff; }
+        .btn-filter:hover { opacity: 0.9; }
+
+        .toolbar {
+            display: flex; gap: 12px; align-items: center;
+            margin-bottom: 16px; flex-wrap: wrap;
+            color: var(--muted); font-size: 0.85em;
+        }
+        .toolbar label { display: inline-flex; align-items: center; gap: 5px; }
+        .toolbar input[type=checkbox] { accent-color: #2a6df4; }
+        .toolbar .status { margin-left: auto; }
+
+        table {
+            width: 100%; border-collapse: collapse;
+            background: var(--panel); border-radius: 8px;
+            overflow: hidden;
+        }
+        th, td {
+            text-align: left; padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.92em;
+            vertical-align: middle;
+        }
+        th { background: #232830; color: var(--muted); font-weight: 600; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #232830; }
+
+        td.conf { color: var(--warn); }
+        td.snapshot a { color: var(--accent); text-decoration: none; }
+        td.snapshot a:hover { text-decoration: underline; }
+        td.actions { text-align: center; white-space: nowrap; }
+
+        .btn-del {
+            background: transparent; color: var(--danger);
+            border: 1px solid var(--danger); border-radius: 4px;
+            padding: 4px 10px; cursor: pointer;
+            font-size: 0.85em; line-height: 1;
+        }
+        .btn-del:hover { background: var(--danger); color: #fff; }
+        .btn-del:disabled { opacity: 0.5; cursor: wait; }
+
+        .cat-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75em;
+            color: #fff;
+            margin-left: 6px;
+            vertical-align: middle;
+            text-transform: lowercase;
+        }
+        .cat-plate   { background: var(--cat-plate); }
+        .cat-person  { background: var(--cat-person); }
+        .cat-vehicle { background: var(--cat-vehicle); }
+        .cat-animal  { background: var(--cat-animal); }
+        .cat-object  { background: var(--cat-object); }
+
+        .empty {
+            padding: 40px; text-align: center; color: var(--muted);
+            background: var(--panel); border-radius: 8px;
+        }
+
+        footer {
+            text-align: center; color: var(--muted);
+            font-size: 0.85em; padding: 24px;
+        }
+    </style>
+</head>
+<body>
+{% set is_admin = user and user.role == 'admin' %}
+<header>
+    <h1>VHS-Viewer</h1>
+    <nav>
+        <a href="{{ url_for('index') }}">Просмотр</a>
+        <a href="{{ url_for('events_page') }}" class="active">События</a>
+        <a href="{{ url_for('analytics_page') }}">Аналитика</a>
+        {% if user and user.role == 'admin' %}
+        <a href="{{ url_for('relay_page') }}">Реле</a>
+        <a href="{{ url_for('messaging_page') }}">Уведомления</a>
+        {% endif %}
+        <a href="{{ url_for('about_page') }}">О программе</a>
+    </nav>
+    <div class="user">
+        {% if user %}Вы: <b>{{ user.username }}</b> · <a href="{{ url_for('logout') }}" style="color:var(--muted)">выход</a>{% endif %}
+    </div>
+</header>
+
+<main>
+    <!-- ============ ФИЛЬТРЫ ============ -->
+    <div class="filters">
+        <div class="filter-group">
+            <label class="title">Категории</label>
+            <div class="filter-chips" id="cat-chips">
+                <label class="chip chip-plate"><input type="checkbox" value="plate"> 🚗 Номера</label>
+                <label class="chip chip-person"><input type="checkbox" value="person"> 👤 Люди</label>
+                <label class="chip chip-vehicle"><input type="checkbox" value="vehicle"> 🚙 Транспорт</label>
+                <label class="chip chip-animal"><input type="checkbox" value="animal"> 🐻 Животные</label>
+                <label class="chip chip-object"><input type="checkbox" value="object"> 📦 Объекты</label>
+            </div>
+        </div>
+
+        <div class="filter-group">
+            <label class="title" for="camera-select">Камера</label>
+            <select id="camera-select">
+                <option value="">— все камеры —</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label class="title" for="search-input">Поиск</label>
+            <input id="search-input" type="text"
+                   placeholder="номер или метка (напр. А798, person)">
+        </div>
+
+        <div class="filter-group">
+            <label class="title" for="limit">Последних</label>
+            <input id="limit" type="number" min="1" max="1000" value="100">
+        </div>
+
+        <div class="actions">
+            <button id="apply" class="btn-filter primary">Применить</button>
+            <button id="reset" class="btn-filter secondary">Сбросить</button>
+            {% if is_admin %}
+            <button id="clear-all" class="btn-filter danger">🗑 Очистить все</button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ============ СТАТУС + АВТООБНОВЛЕНИЕ ============ -->
+    <div class="toolbar">
+        <label><input id="auto" type="checkbox" checked> автообновление (5с)</label>
+        <span class="status" id="status"></span>
+    </div>
+
+    <div id="content">
+        <div class="empty">Загрузка…</div>
+    </div>
+</main>
+
+<footer>{{ app_footer }} · v{{ version }}</footer>
+<script>
+const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+
+(function () {
+    const contentEl  = document.getElementById('content');
+    const statusEl   = document.getElementById('status');
+    const limitEl    = document.getElementById('limit');
+    const autoEl     = document.getElementById('auto');
+    const cameraSel  = document.getElementById('camera-select');
+    const searchEl   = document.getElementById('search-input');
+    const chipsWrap  = document.getElementById('cat-chips');
+
+    if (!contentEl || !statusEl || !limitEl || !autoEl ||
+        !cameraSel || !searchEl || !chipsWrap) {
+        // Диагностика: если это сообщение появилось — HTML и JS из разных версий
+        console.error('events.html: не найдены ключевые DOM-элементы. '
+                    + 'Проверьте, что файл собран из Части 1/2 + Части 2/2.');
+        return;
+    }
+
+    let timer = null;
+
+    const CAT_EMOJI = {
+        plate: '🚗', person: '👤', vehicle: '🚙', animal: '🐻', object: '📦'
+    };
+
+    // ---------- утилиты ----------
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function catBadge(category) {
+        const cat = String(category || 'object').toLowerCase();
+        const safe = ['plate','person','vehicle','animal','object'].includes(cat)
+            ? cat : 'object';
+        return '<span class="cat-badge cat-' + safe + '">' + safe + '</span>';
+    }
+
+    // ---------- фильтры: чипы ----------
+    function updateChipStyles() {
+        chipsWrap.querySelectorAll('.chip').forEach(chip => {
+            const cb = chip.querySelector('input[type=checkbox]');
+            if (cb) chip.classList.toggle('checked', cb.checked);
+        });
+    }
+
+    function getSelectedCategories() {
+        return Array.from(chipsWrap.querySelectorAll('input[type=checkbox]:checked'))
+            .map(cb => cb.value);
+    }
+
+    chipsWrap.addEventListener('change', updateChipStyles);
+
+    // ---------- сборка URL с фильтрами ----------
+    function buildQuery() {
+        const params = new URLSearchParams();
+
+        const limit = Math.max(1, Math.min(1000, parseInt(limitEl.value, 10) || 100));
+        params.set('limit', String(limit));
+
+        getSelectedCategories().forEach(c => params.append('category', c));
+
+        const cam = (cameraSel.value || '').trim();
+        if (cam) params.set('camera_id', cam);
+
+        const search = (searchEl.value || '').trim();
+        if (search) params.set('search', search);
+
+        return params.toString();
+    }
+
+    // ---------- рендер таблицы ----------
+    function render(events) {
+        if (!events.length) {
+            contentEl.innerHTML =
+                '<div class="empty">Нет событий по выбранным фильтрам. ' +
+                'Измените категории/камеру/поиск или нажмите «Сбросить».</div>';
+            return;
+        }
+
+        const rows = events.slice().reverse().map(e => {
+            const snap = e.snapshot
+                ? '<a href="/snapshot/' + encodeURI(escapeHtml(e.snapshot)) +
+                  '" target="_blank">открыть</a>'
+                : '—';
+            const conf = (typeof e.confidence === 'number')
+                ? e.confidence.toFixed(2) : '—';
+            const cat = e.category || (e.plate ? 'plate' : 'object');
+            const emoji = CAT_EMOJI[cat] || '📦';
+            const label = e.label || e.plate || '?';
+            const what = emoji + ' ' + escapeHtml(label) + ' ' + catBadge(cat);
+
+            const actionsCell = IS_ADMIN
+                ? '<td class="actions">' +
+                    '<button class="btn-del" data-ts="' + e.ts + '" ' +
+                    'title="Удалить событие">🗑</button>' +
+                  '</td>'
+                : '';
+
+            return '<tr>' +
+                '<td>' + escapeHtml(e.iso) + '</td>' +
+                '<td>' + escapeHtml(e.camera_name) + '</td>' +
+                '<td>' + what + '</td>' +
+                '<td class="conf">' + conf + '</td>' +
+                '<td class="snapshot">' + snap + '</td>' +
+                actionsCell +
+                '</tr>';
+        }).join('');
+
+        const actionsHead = IS_ADMIN ? '<th style="width:80px">Действия</th>' : '';
+        contentEl.innerHTML =
+            '<table>' +
+            '<thead><tr>' +
+                '<th>Время</th>' +
+                '<th>Камера</th>' +
+                '<th>Что</th>' +
+                '<th>Уверенность</th>' +
+                '<th>Снапшот</th>' +
+                actionsHead +
+            '</tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+            '</table>';
+
+        if (IS_ADMIN) {
+            contentEl.querySelectorAll('.btn-del').forEach(btn => {
+                btn.addEventListener('click', onDeleteClick);
+            });
+        }
+    }
+
+    // ---------- удаление одного ----------
+    async function onDeleteClick(ev) {
+        const btn = ev.currentTarget;
+        const ts = parseFloat(btn.dataset.ts);
+        if (!confirm('Удалить это событие и его снапшот?')) return;
+
+        btn.disabled = true;
+        try {
+            const r = await fetch('/api/events/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ ts: ts }),
+            });
+            if (r.status === 401) { window.location.href = '/login'; return; }
+            if (r.status === 403) { alert('Недостаточно прав'); return; }
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+            await load();
+        } catch (err) {
+            alert('Не удалось удалить: ' + err.message);
+            btn.disabled = false;
+        }
+    }
+
+    // ---------- очистка всех ----------
+    async function onClearAll() {
+        if (!confirm('Удалить ВСЕ события и снапшоты? Это действие необратимо.')) {
+            return;
+        }
+        try {
+            const r = await fetch('/api/events/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ delete_snapshots: true }),
+            });
+            if (r.status === 401) { window.location.href = '/login'; return; }
+            if (r.status === 403) { alert('Недостаточно прав'); return; }
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+            await load();
+        } catch (err) {
+            alert('Не удалось очистить: ' + err.message);
+        }
+    }
+
+    // ---------- загрузка ----------
+    async function load() {
+        statusEl.textContent = 'обновление…';
+        const qs = buildQuery();
+        try {
+            const r = await fetch('/api/events?' + qs, {
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+            });
+            if (r.status === 401) { window.location.href = '/login'; return; }
+            if (!r.ok) {
+                const txt = await r.text();
+                throw new Error('HTTP ' + r.status + ': ' + txt.slice(0, 200));
+            }
+            const j = await r.json();
+            render(j.events || []);
+            const ts = new Date().toLocaleTimeString();
+            statusEl.textContent = 'обновлено: ' + ts +
+                                   ' · всего ' + (j.count || 0);
+        } catch (err) {
+            statusEl.textContent = 'ошибка: ' + err.message;
+            contentEl.innerHTML =
+                '<div class="empty">Не удалось загрузить события: ' +
+                escapeHtml(err.message) + '</div>';
+        }
+    }
+
+    // ---------- камеры для фильтра ----------
+    async function loadCameras() {
+        try {
+            const r = await fetch('/api/events/cameras', {
+                credentials: 'same-origin',
+            });
+            if (r.status === 401) return;
+            if (!r.ok) return;
+            const j = await r.json();
+            const current = cameraSel.value;
+            while (cameraSel.options.length > 1) cameraSel.remove(1);
+            (j.cameras || []).forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name + ' (' + c.id + ')';
+                cameraSel.appendChild(opt);
+            });
+            if (current) cameraSel.value = current;
+        } catch (err) {
+            console.warn('loadCameras failed:', err);
+        }
+    }
+
+    // ---------- автообновление ----------
+    function schedule() {
+        if (timer) { clearInterval(timer); timer = null; }
+        if (autoEl.checked) timer = setInterval(load, 5000);
+    }
+
+    // ---------- сброс ----------
+    function resetFilters() {
+        chipsWrap.querySelectorAll('input[type=checkbox]').forEach(cb => {
+            cb.checked = false;
+        });
+        updateChipStyles();
+        cameraSel.value = '';
+        searchEl.value = '';
+        limitEl.value = '100';
+        load();
+    }
+
+    // ---------- обработчики ----------
+    document.getElementById('apply').addEventListener('click', load);
+    document.getElementById('reset').addEventListener('click', resetFilters);
+    autoEl.addEventListener('change', schedule);
+
+    searchEl.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter') { ev.preventDefault(); load(); }
+    });
+
+    cameraSel.addEventListener('change', load);
+    limitEl.addEventListener('change', load);
+
+    const clearBtn = document.getElementById('clear-all');
+    if (clearBtn) clearBtn.addEventListener('click', onClearAll);
+
+    // ---------- инициализация ----------
+    updateChipStyles();
+    loadCameras();
+    load();
+    schedule();
+})();
+</script>
+</body>
+</html>
+

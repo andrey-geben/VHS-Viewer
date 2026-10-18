@@ -1,43 +1,33 @@
-# =====================================================================
-#  VHS-Viewer — .gitignore
-# =====================================================================
+# Секреты и личные конфиги
+viewer_config.yaml
+streams.json
 
-# --- Виртуальное окружение ---
+# Логи и данные
+logs/
+*.log
+logs/snapshots/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 .venv/
 venv/
 env/
 
-# --- Секреты ---
-viewer_config.yaml
-*.local.yaml
-
-# --- Логи ---
-logs/
-*.log
-run.pid
-
-# --- Python ---
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
+# PyInstaller
 build/
 dist/
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
+*.spec
 
-# --- PyInstaller ---
-*.spec.bak
+# Модели (скачиваются автоматически)
+*.pt
+*.onnx
+yolov8n_openvino_model/
 
-# --- IDE ---
+# IDE
 .idea/
 .vscode/
 *.swp
-*.swo
-
-# --- OS ---
-Thumbs.db
 .DS_Store
-desktop.ini

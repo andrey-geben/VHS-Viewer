@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Аналитика — VHS-Viewer</title>
+    <style>
+        :root {
+            --bg: #14161a; --panel: #1e2126; --border: #2a2f37;
+            --text: #e8e8e8; --muted: #8b96a5; --accent: #4da3ff;
+            --ok: #4caf50; --warn: #f0ad4e; --danger: #e05252;
+            --cat-plate: #2c7a2c;
+            --cat-person: #b06d10;
+            --cat-vehicle: #1f5fa8;
+            --cat-animal: #8a2c2c;
+            --cat-object: #4a4a4a;
+        }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+        }
+        header {
+            height: 48px;
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+        }
+        header h1 { font-size: 1.1em; margin: 0; color: var(--accent); }
+        header nav { display: flex; gap: 14px; margin-left: 20px; }
+        header nav a {
+            color: var(--text); text-decoration: none;
+            padding: 6px 10px; border-radius: 6px;
+            font-size: 0.92em;
+        }
+        header nav a:hover { background: #2a2f37; }
+        header nav a.active { background: #2a6df4; color: #fff; }
+        header .user { margin-left: auto; color: var(--muted); font-size: 0.9em; }
+        header .user b { color: var(--text); }
+
+        /* ============ Toolbar ============ */
+        .toolbar {
+            min-height: 44px;
+            padding: 6px 20px;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            flex-wrap: wrap;
+            background: #1a1d22;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85em;
+            color: var(--muted);
+        }
+        .toolbar .stat { display: flex; align-items: center; gap: 6px; }
+        .toolbar .stat b { color: var(--text); }
+        .toolbar .sep {
+            width: 1px; height: 20px; background: var(--border);
+        }
+        .toolbar .group {
+            display: flex; align-items: center; gap: 6px;
+        }
+        .toolbar .group-label {
+            color: var(--muted); font-size: 0.85em; margin-right: 4px;
+        }
+        .toolbar select,
+        .toolbar input[type=number] {
+            background: #14161a;
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 5px 8px;
+            font-size: 0.9em;
+            font-family: inherit;
+        }
+        .toolbar .layout-btn {
+            background: #2a2f37;
+            color: var(--text);
+            border: 1px solid transparent;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 0.85em;
+        }
+        .toolbar .layout-btn:hover { background: #353b44; }
+        .toolbar .layout-btn.active {
+            background: #2a6df4;
+            color: #fff;
+            border-color: #4da3ff;
+        }
+        .toolbar .right {
+            margin-left: auto;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .toolbar button.primary {
+            padding: 5px 12px;
+            background: #2a6df4;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .toolbar button.primary:hover { background: #1e5bd8; }
+        .toolbar label.check {
+            display: inline-flex; align-items: center; gap: 5px;
+            color: var(--muted); font-size: 0.9em; cursor: pointer;
+        }
+        .toolbar label.check input { accent-color: #2a6df4; }
+
+        /* ============ Сетка ============ */
+        #grid {
+            display: grid;
+            gap: 4px;
+            padding: 4px;
+            height: calc(100vh - 48px - 44px - 26px);
+            background: #000;
+            overflow-y: auto;
+        }
+        #grid.empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+            font-size: 1em;
+            padding: 40px;
+            text-align: center;
+        }
+
+        /* Раскладки */
+        #grid.layout-auto {
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            grid-auto-rows: minmax(240px, 1fr);
+        }
+        #grid.layout-1x1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+        #grid.layout-2x2 {
+            grid-template-columns: repeat(2, 1fr);
+            grid-auto-rows: minmax(240px, 1fr);
+        }
+        #grid.layout-3x3 {
+            grid-template-columns: repeat(3, 1fr);
+            grid-auto-rows: minmax(200px, 1fr);
+        }
+        #grid.layout-4x4 {
+            grid-template-columns: repeat(4, 1fr);
+            grid-auto-rows: minmax(160px, 1fr);
+        }
+
+        /* Компактный режим — без видео, только цифры */
+        #grid.compact .an-cell .video-wrap { display: none; }
+        #grid.compact .an-cell { min-height: 0; }
+        #grid.compact .an-cell .stats-bar { min-height: 44px; }
+
+        /* Плитка */
+        .an-cell {
+            position: relative;
+            background: #000;
+            overflow: hidden;
+            border-radius: 4px;
+            border: 1px solid #1a1d22;
+            display: flex;
+            flex-direction: column;
+        }
+        .an-cell.pulse {
+            animation: cellPulse 1.5s ease-in-out;
+        }
+        @keyframes cellPulse {
+            0% { border-color: #2a6df4; box-shadow: 0 0 0 0 rgba(42, 109, 244, 0.5); }
+            100% { border-color: #1a1d22; box-shadow: 0 0 0 0 rgba(42, 109, 244, 0); }
+        }
+
+        .an-cell .video-wrap {
+            position: relative;
+            flex: 1;
+            background: #000;
+            min-height: 0;
+        }
+        .an-cell iframe {
+            width: 100%; height: 100%;
+            border: 0; display: block;
+        }
+        .an-cell .cam-label {
+            position: absolute; top: 8px; left: 8px;
+            background: rgba(0,0,0,0.75);
+            color: #fff;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            pointer-events: none;
+            z-index: 2;
+            border-left: 3px solid var(--accent);
+        }
+
+        .an-cell .stats-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: #14161a;
+            border-top: 1px solid var(--border);
+            font-size: 0.82em;
+            color: var(--muted);
+            min-height: 40px;
+        }
+        .an-cell .total-badge {
+            background: #2a6df4;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 0.9em;
+            flex-shrink: 0;
+        }
+        .an-cell .cat-chips {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            min-width: 0;
+        }
+        .an-cell .cat-mini {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 1px 6px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            color: #fff;
+            white-space: nowrap;
+        }
+        .an-cell .cat-mini.cat-plate   { background: var(--cat-plate); }
+        .an-cell .cat-mini.cat-person  { background: var(--cat-person); }
+        .an-cell .cat-mini.cat-vehicle { background: var(--cat-vehicle); }
+        .an-cell .cat-mini.cat-animal  { background: var(--cat-animal); }
+        .an-cell .cat-mini.cat-object  { background: var(--cat-object); }
+
+        .an-cell .last-event {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            color: #cfd6e0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 50%;
+            flex-shrink: 1;
+        }
+        .an-cell .last-event .le-time {
+            color: var(--muted);
+            font-size: 0.92em;
+        }
+        .an-cell .last-event .le-label {
+            color: var(--text);
+            font-weight: 600;
+        }
+        .an-cell .no-events {
+            color: #4a4a4a;
+            font-style: italic;
+        }
+
+        /* Компактный режим — крупный счётчик */
+        #grid.compact .an-cell .total-badge {
+            font-size: 1.4em;
+            padding: 4px 14px;
+            border-radius: 12px;
+        }
+        #grid.compact .an-cell .stats-bar {
+            font-size: 0.95em;
+            padding: 10px 12px;
+        }
+
+        footer {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            height: 26px;
+            padding: 4px 12px;
+            background: var(--panel);
+            border-top: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.8em;
+            display: flex;
+            justify-content: space-between;
+        }
+        footer a { color: #6cb2ff; text-decoration: none; }
+
+        /* Lazy-placeholder, пока iframe не загружен */
+        .an-cell .lazy-hint {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #4a4a4a;
+            font-size: 0.85em;
+            background: #0a0b0e;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>VHS-Viewer · Аналитика</h1>
+    <nav>
+        <a href="{{ url_for('index') }}">Просмотр</a>
+        <a href="{{ url_for('events_page') }}">События</a>
+        <a href="{{ url_for('analytics_page') }}" class="active">Аналитика</a>
+        {% if user and user.role == 'admin' %}
+        <a href="{{ url_for('relay_page') }}">Реле</a>
+        <a href="{{ url_for('messaging_page') }}">Уведомления</a>
+        {% endif %}
+        <a href="{{ url_for('about_page') }}">О программе</a>
+    </nav>
+    <div class="user">
+        {% if user %}Вы: <b>{{ user.username }}</b> · <a href="{{ url_for('logout') }}" style="color:var(--muted)">выход</a>{% endif %}
+    </div>
+</header>
+
+<div class="toolbar">
+    <div class="stat">Камер: <b id="stat-cameras">0</b></div>
+    <div class="stat">Событий за <span id="stat-date">сегодня</span>: <b id="stat-events">0</b></div>
+
+    <div class="sep"></div>
+
+    <div class="group">
+        <span class="group-label">Раскладка:</span>
+        <button class="layout-btn" data-layout="auto" title="Авто">⊞ Auto</button>
+        <button class="layout-btn" data-layout="2x2" title="2×2">⊞ 2×2</button>
+        <button class="layout-btn" data-layout="3x3" title="3×3">⊞ 3×3</button>
+        <button class="layout-btn" data-layout="4x4" title="4×4">⊞ 4×4</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="group">
+        <span class="group-label">Сортировка:</span>
+        <select id="sort-select">
+            <option value="events-desc">По событиям ↓</option>
+            <option value="events-asc">По событиям ↑</option>
+            <option value="last-desc">По последнему событию ↓</option>
+            <option value="name-asc">По имени A→Я</option>
+            <option value="name-desc">По имени Я→А</option>
+        </select>
+    </div>
+
+    <div class="group">
+        <label class="check">
+            <input id="filter-events" type="checkbox">
+            Только с событиями
+        </label>
+    </div>
+
+    <div class="group">
+        <label class="check">
+            <input id="compact-mode" type="checkbox">
+            Компактно
+        </label>
+    </div>
+
+    <div class="right">
+        <label class="check">
+            <input id="auto" type="checkbox" checked>
+            авто (5с)
+        </label>
+        <button id="refresh" class="primary">Обновить</button>
+        <span id="status"></span>
+    </div>
+</div>
+
+<div id="grid" class="empty">Загрузка…</div>
+
+<footer>
+    <span>{{ app_footer }} · v{{ version }}</span>
+    <a href="{{ url_for('about_page') }}">О программе</a>
+</footer>
+<script>
+window.CURRENT_CONFIG = {{ cfg | tojson }};
+</script>
+
+<script>
+(function () {
+    const grid       = document.getElementById('grid');
+    const autoEl     = document.getElementById('auto');
+    const statusEl   = document.getElementById('status');
+    const statCams   = document.getElementById('stat-cameras');
+    const statEvents = document.getElementById('stat-events');
+    const statDate   = document.getElementById('stat-date');
+    const sortSel    = document.getElementById('sort-select');
+    const filterEv   = document.getElementById('filter-events');
+    const compactChk = document.getElementById('compact-mode');
+    const layoutBtns = document.querySelectorAll('.layout-btn');
+
+    let timer = null;
+    let lastSummary = null;
+    let lastActive  = null;  // кэш активных камер, чтобы не пересобирать без нужды
+
+    // Настройки вида хранятся в localStorage, чтобы не сбрасывались при F5
+    const LS_KEY = 'vhs_analytics_view_v1';
+
+    const CAT_EMOJI = {
+        plate: '🚗', person: '👤', vehicle: '🚙', animal: '🐻', object: '📦'
+    };
+
+    // ---------- Утилиты ----------
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function streamIdFromUrl(url) {
+        if (!url) return '';
+        let clean = String(url).split('?')[0].split('#')[0];
+        clean = clean.replace(/\/+$/, '');
+        const parts = clean.split('/').filter(Boolean);
+        return parts.length ? parts[parts.length - 1] : '';
+    }
+
+    function isAnalyticsEnabled(cfg, sid) {
+        if (!sid) return false;
+        const cams = (cfg.analytics && cfg.analytics.cameras) || {};
+        let entry = cams[sid];
+        if (!entry) entry = cams['default'] || { enabled: false };
+        return entry.enabled !== false;
+    }
+
+    // ---------- Сохранение/загрузка вида ----------
+    function loadView() {
+        try {
+            return JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {};
+        } catch (e) { return {}; }
+    }
+    function saveView() {
+        const v = {
+            layout: currentLayout,
+            sort: sortSel.value,
+            filterEvents: filterEv.checked,
+            compact: compactChk.checked,
+        };
+        try { localStorage.setItem(LS_KEY, JSON.stringify(v)); } catch (e) {}
+    }
+
+    let currentLayout = 'auto';
+
+    function applyLayout(name) {
+        currentLayout = name;
+        grid.classList.remove('layout-auto', 'layout-1x1', 'layout-2x2', 'layout-3x3', 'layout-4x4');
+        grid.classList.add('layout-' + name);
+        layoutBtns.forEach(b => {
+            b.classList.toggle('active', b.dataset.layout === name);
+        });
+    }
+
+    function applyCompact(on) {
+        grid.classList.toggle('compact', !!on);
+    }
+
+    // ---------- Lazy-load iframe через IntersectionObserver ----------
+    // Плитка попадает в видимую область → подгружаем iframe.
+    const io = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            const cell = entry.target;
+            if (cell.dataset.loaded === '1') return;
+            const hint = cell.querySelector('.lazy-hint');
+            const videoWrap = cell.querySelector('.video-wrap');
+            if (!videoWrap) return;
+            const url = cell.dataset.url;
+            if (!url) return;
+            const iframe = document.createElement('iframe');
+            iframe.src = url;
+            iframe.setAttribute('allow', 'autoplay; fullscreen');
+            iframe.setAttribute('scrolling', 'no');
+            iframe.setAttribute('frameborder', '0');
+            videoWrap.appendChild(iframe);
+            if (hint) hint.remove();
+            cell.dataset.loaded = '1';
+            io.unobserve(cell);
+        });
+    }, { root: grid, rootMargin: '200px' });  // 200px — предзагрузка до скролла
+
+    // ---------- Построение списка активных камер ----------
+    function buildActiveStreams(cfg) {
+        const streams = (cfg.streams || []).filter(s => s.enabled !== false);
+        return streams
+            .map(s => {
+                const sid = streamIdFromUrl(s.url || '');
+                return {
+                    sid,
+                    name: s.name || sid || 'Поток',
+                    url: s.url,
+                    analytics: isAnalyticsEnabled(cfg, sid),
+                };
+            })
+            .filter(s => s.analytics && s.sid);
+    }
+
+    // ---------- Сортировка и фильтрация ----------
+    function orderStreams(streams, summary) {
+        const cams = (summary && summary.cameras) || {};
+        const sort = sortSel.value;
+        const onlyWithEvents = filterEv.checked;
+
+        let list = streams.slice();
+
+        if (onlyWithEvents) {
+            list = list.filter(s => (cams[s.sid] && cams[s.sid].total > 0));
+        }
+
+        const tsOf = s => {
+            const le = cams[s.sid] && cams[s.sid].last_event;
+            return le ? (le.ts || 0) : 0;
+        };
+        const totalOf = s => (cams[s.sid] && cams[s.sid].total) || 0;
+
+        switch (sort) {
+            case 'events-desc':
+                list.sort((a, b) => totalOf(b) - totalOf(a) || a.name.localeCompare(b.name));
+                break;
+            case 'events-asc':
+                list.sort((a, b) => totalOf(a) - totalOf(b) || a.name.localeCompare(b.name));
+                break;
+            case 'last-desc':
+                list.sort((a, b) => tsOf(b) - tsOf(a) || a.name.localeCompare(b.name));
+                break;
+            case 'name-asc':
+                list.sort((a, b) => a.name.localeCompare(b.name));
+                break;
+            case 'name-desc':
+                list.sort((a, b) => b.name.localeCompare(a.name));
+                break;
+        }
+        return list;
+    }
+
+    // ---------- Рендер ----------
+    function buildCell(stream) {
+        const cell = document.createElement('div');
+        cell.className = 'an-cell';
+        cell.dataset.sid = stream.sid;
+        cell.dataset.url = stream.url || '';
+        cell.dataset.loaded = '0';
+
+        cell.innerHTML =
+            '<div class="video-wrap">' +
+                '<div class="cam-label">' + escapeHtml(stream.name) + '</div>' +
+                '<div class="lazy-hint">— видео загрузится при прокрутке —</div>' +
+            '</div>' +
+            '<div class="stats-bar">' +
+                '<span class="total-badge" data-role="total">0</span>' +
+                '<span class="cat-chips" data-role="chips"></span>' +
+                '<span class="last-event" data-role="last">' +
+                    '<span class="no-events">нет событий</span>' +
+                '</span>' +
+            '</div>';
+
+        // Если плитка сразу видима — IntersectionObserver сработает сам,
+        // но чтобы не ждать, запускаем проверку руками
+        io.observe(cell);
+        return cell;
+    }
+
+    function updateCellStats(cell, data) {
+        cell.querySelector('[data-role="total"]').textContent = data.total || 0;
+
+        const chipsEl = cell.querySelector('[data-role="chips"]');
+        const cats = data.by_category || {};
+        chipsEl.innerHTML = Object.keys(cats)
+            .filter(c => cats[c] > 0)
+            .sort((a, b) => cats[b] - cats[a])
+            .map(cat => {
+                const safe = ['plate','person','vehicle','animal','object'].includes(cat)
+                    ? cat : 'object';
+                const emoji = CAT_EMOJI[cat] || '📦';
+                return '<span class="cat-mini cat-' + safe + '">' +
+                    emoji + ' ' + cats[cat] + '</span>';
+            }).join('');
+
+        const lastEl = cell.querySelector('[data-role="last"]');
+        if (data.last_event) {
+            const le = data.last_event;
+            const emoji = CAT_EMOJI[le.category] || '📦';
+            lastEl.innerHTML =
+                '<span class="le-time">' +
+                    escapeHtml((le.iso || '').slice(-8)) +
+                '</span>' +
+                '<span class="le-label">' +
+                    emoji + ' ' + escapeHtml(le.label || '?') +
+                '</span>';
+        } else {
+            lastEl.innerHTML = '<span class="no-events">нет событий</span>';
+        }
+    }
+
+    function renderGrid(streams, summary) {
+        const cams = (summary && summary.cameras) || {};
+
+        if (streams.length === 0) {
+            grid.className = 'empty';
+            grid.innerHTML =
+                (filterEv.checked && lastActive && lastActive.length > 0)
+                    ? 'Событий за сегодня пока нет ни на одной камере. Снимите «Только с событиями», чтобы увидеть все.'
+                    : 'Нет камер с включённой аналитикой. Откройте «Настройки» на главной и включите аналитику у нужного потока.';
+            return;
+        }
+
+        // Убеждаемся, что layout-класс на месте (класс empty мог его стереть)
+        grid.className = '';
+        grid.classList.add('layout-' + currentLayout);
+        applyCompact(compactChk.checked);
+
+        // Пересобираем только если состав/порядок камер изменился
+        const wantedIds = streams.map(s => s.sid);
+        const existingIds = Array.from(grid.querySelectorAll('.an-cell')).map(c => c.dataset.sid);
+        const sameSet =
+            existingIds.length === wantedIds.length &&
+            wantedIds.every((id, i) => existingIds[i] === id);
+
+        if (!sameSet) {
+            // Отписываем старые плитки от observer, чтобы не плодить утечки
+            grid.querySelectorAll('.an-cell').forEach(c => io.unobserve(c));
+            grid.innerHTML = '';
+            streams.forEach(s => grid.appendChild(buildCell(s)));
+        }
+
+        // Обновляем цифры
+        streams.forEach(s => {
+            const cell = grid.querySelector('.an-cell[data-sid="' + s.sid + '"]');
+            if (!cell) return;
+            const data = cams[s.sid] || { total: 0, by_category: {}, last_event: null };
+            updateCellStats(cell, data);
+
+            // Небольшой pulse, если пришло новое событие с прошлого раза
+            const prev = cell.dataset.lastTs ? parseFloat(cell.dataset.lastTs) : 0;
+            const cur = (data.last_event && data.last_event.ts) || 0;
+            if (cur > prev && prev > 0) {
+                cell.classList.remove('pulse');
+                void cell.offsetWidth;  // рестарт CSS-анимации
+                cell.classList.add('pulse');
+                setTimeout(() => cell.classList.remove('pulse'), 1600);
+            }
+            cell.dataset.lastTs = String(cur);
+        });
+    }
+
+    // ---------- Загрузка ----------
+    async function load() {
+        statusEl.textContent = 'обновление…';
+        try {
+            const r = await fetch('/api/analytics/summary', {
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+            });
+            if (r.status === 401) { window.location.href = '/login'; return; }
+            const summary = await r.json();
+
+            const cfg = window.CURRENT_CONFIG || {};
+            const active = buildActiveStreams(cfg);
+            lastActive = active;
+            lastSummary = summary;
+
+            const ordered = orderStreams(active, summary);
+            renderGrid(ordered, summary);
+
+            statCams.textContent = active.length;
+            statEvents.textContent = summary.events_scanned || 0;
+            statDate.textContent = summary.date || 'сегодня';
+
+            statusEl.textContent = 'обновлено: ' + new Date().toLocaleTimeString();
+        } catch (err) {
+            statusEl.textContent = 'ошибка: ' + err.message;
+        }
+    }
+
+    // ---------- Автообновление ----------
+    function schedule() {
+        if (timer) { clearInterval(timer); timer = null; }
+        if (autoEl.checked) timer = setInterval(load, 5000);
+    }
+
+    // ---------- Обработчики ----------
+    layoutBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            applyLayout(btn.dataset.layout);
+            saveView();
+            // Пересобрать сетку, чтобы пересчитать видимые плитки для lazy-load
+            if (lastActive && lastSummary) {
+                renderGrid(orderStreams(lastActive, lastSummary), lastSummary);
+            }
+        });
+    });
+
+    sortSel.addEventListener('change', () => {
+        saveView();
+        if (lastActive && lastSummary) {
+            renderGrid(orderStreams(lastActive, lastSummary), lastSummary);
+        }
+    });
+
+    filterEv.addEventListener('change', () => {
+        saveView();
+        if (lastActive && lastSummary) {
+            renderGrid(orderStreams(lastActive, lastSummary), lastSummary);
+        }
+    });
+
+    compactChk.addEventListener('change', () => {
+        applyCompact(compactChk.checked);
+        saveView();
+    });
+
+    autoEl.addEventListener('change', schedule);
+    document.getElementById('refresh').addEventListener('click', load);
+
+    // ---------- Инициализация ----------
+    (function initFromStorage() {
+        const v = loadView();
+        applyLayout(v.layout || 'auto');
+        sortSel.value = v.sort || 'events-desc';
+        filterEv.checked = !!v.filterEvents;
+        compactChk.checked = !!v.compact;
+        applyCompact(compactChk.checked);
+    })();
+
+    load();
+    schedule();
+})();
+</script>
+</body>
+</html>

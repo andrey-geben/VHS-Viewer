@@ -113,8 +113,8 @@
         .modal {
             background: #1e2126; border: 1px solid #2a2f37;
             border-radius: 8px; padding: 20px;
-            width: 820px; max-width: 95vw;
-            max-height: 90vh; overflow-y: auto;
+            width: 1400px; max-width: 98vw;
+            max-height: 92vh; overflow-y: auto;
         }
         .modal h2 { margin-top: 0; }
         .modal h3 {
@@ -147,6 +147,7 @@
             text-align: left;
             border-bottom: 1px solid #2a2f37;
             font-size: 0.9em;
+            vertical-align: middle;
         }
         .modal th { color: #8b96a5; font-weight: normal; }
         .modal .btn-sm {
@@ -173,6 +174,47 @@
         .status-ok  { color: #57d87a; font-size: 0.85em; }
         .status-err { color: #f16a6a; font-size: 0.85em; }
         .muted { color: #8b96a5; font-size: 0.85em; }
+
+        /* Analytics checkboxes — в ряд */
+        .st-an-box {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px 14px;
+            padding: 10px 14px;
+            background: #14161a;
+            border: 1px solid #2a2f37;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+        .st-an-box.hidden { display: none; }
+        .st-an-group-label {
+            color: #8b96a5;
+            font-weight: 600;
+            white-space: nowrap;
+            margin-right: 2px;
+        }
+        .st-an-sep {
+            width: 1px;
+            height: 18px;
+            background: #2a2f37;
+            margin: 0 4px;
+        }
+        .st-an-item {
+            display: flex; align-items: center; gap: 5px;
+            color: #e8e8e8; cursor: pointer;
+            user-select: none; padding: 3px 6px;
+            border-radius: 3px;
+            transition: background-color 0.1s;
+        }
+        .st-an-item:hover { background: #232830; color: #6cb2ff; }
+        .st-an-item input[type=checkbox] { accent-color: #2a6df4; margin: 0; cursor: pointer; }
+        .st-an-off-hint {
+            color: #8b96a5; font-size: 0.85em; font-style: italic;
+            padding: 10px; text-align: center;
+            background: #14161a; border: 1px dashed #2a2f37;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -187,6 +229,13 @@
             </span>
         {% endif %}
         <button class="secondary" onclick="toggleFullscreen()" title="Полный экран">⛶</button>
+        <a class="btn-link secondary" href="{{ url_for('events_page') }}">📋 События</a>
+        <a class="btn-link secondary" href="{{ url_for('analytics_page') }}">📊 Аналитика</a>
+        {% if user and user.role == 'admin' %}
+        <a class="btn-link secondary" href="{{ url_for('relay_page') }}">🔌 Реле</a>
+        <a class="btn-link secondary" href="{{ url_for('messaging_page') }}">📨 Уведомления</a>
+        {% endif %}
+        <a class="btn-link secondary" href="{{ url_for('about_page') }}">ℹ О программе</a>
         {% if user and user.role == 'admin' %}
             <button onclick="openSettings()">⚙ Настройки</button>
         {% endif %}
@@ -252,19 +301,23 @@
         <h3>Потоки для отображения</h3>
         <p class="hint">
             Отметьте галочками те потоки, которые нужно показывать.
-            Порядок строк = порядок ячеек в сетке.
+            Порядок строк = порядок ячеек в сетке.<br>
+            Колонка <b>«Аналитика»</b> включает обработку кадров этой камеры.
+            Когда она включена — <b>под потоком раскрывается строка</b>
+            с выбором того, что искать (номера / люди / транспорт / животные).
         </p>
 
         <table id="streams-table">
             <thead>
                 <tr>
-                    <th style="width:8%">Показ</th>
-                    <th style="width:30%">Название</th>
-                    <th style="width:50%">URL</th>
-                    <th style="width:12%"></th>
+                    <th style="width:6%">Показ</th>
+                    <th style="width:8%">Аналитика</th>
+                    <th style="width:24%">Название</th>
+                    <th style="width:56%">URL</th>
+                    <th style="width:6%"></th>
                 </tr>
             </thead>
-            <tbody></tbody>
+            <!-- tbody'шки добавляются динамически через addStreamRow() -->
         </table>
         <button class="btn-sm secondary" type="button"
                 onclick="addStreamRow()" style="margin-top:8px">
@@ -332,7 +385,6 @@
         </div>
     </div>
 </div>
-
 <script>
     const currentConfig = {{ cfg | tojson }};
 
@@ -341,10 +393,13 @@
 // =====================================================================
 function updateClock() {
     const now = new Date();
-    document.getElementById('clock').textContent = now.toLocaleString('ru-RU', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit'
-    });
+    const el = document.getElementById('clock');
+    if (el) {
+        el.textContent = now.toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+    }
 }
 setInterval(updateClock, 1000);
 updateClock();
@@ -357,6 +412,14 @@ function escapeHtml(s) {
         '&': '&amp;', '<': '&lt;', '>': '&gt;',
         '"': '&quot;', "'": '&#39;'
     }[c]));
+}
+
+function streamIdFromUrl(url) {
+    if (!url) return '';
+    let clean = String(url).split('?')[0].split('#')[0];
+    clean = clean.replace(/\/+$/, '');
+    const parts = clean.split('/').filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : '';
 }
 
 // =====================================================================
@@ -398,7 +461,43 @@ function renderGrid(streams, layout) {
 }
 
 // =====================================================================
-// СЕРВЕРЫ — строки в таблице
+// АНАЛИТИКА — чекбоксы в ряд
+// =====================================================================
+const ANALYTICS_CHECKBOXES_HTML =
+    '<span class="st-an-group-label">🚗 Номера:</span>' +
+    '<label class="st-an-item"><input type="checkbox" class="st-an-cb" value="__plates__"> ALPR</label>' +
+    '<span class="st-an-sep"></span>' +
+    '<span class="st-an-group-label">Люди:</span>' +
+    '<label class="st-an-item"><input type="checkbox" class="st-an-cb" value="person"> person</label>' +
+    '<span class="st-an-sep"></span>' +
+    '<span class="st-an-group-label">Транспорт:</span>' +
+    '<label class="st-an-item"><input type="checkbox" class="st-an-cb" value="car"> car</label>' +
+    '<label class="st-an-item"><input type="checkbox" class="st-an-cb" value="truck"> truck</label>' +
+    '<label class="st-an-item"><input type="checkbox" class="st-an-cb" value="bus"> bus</label>' +
+    '<label class="st-an-item"><input type="checkbox" class="st-an-cb" value="motorcycle"> motorcycle</label>' +
+    '<label class="st-an-item"><input type="checkbox" class="st-an-cb" value="bicycle"> bicycle</label>' +
+    '<span class="st-an-sep"></span>' +
+    '<span class="st-an-group-label">Животные:</span>' +
+    '<label class="st-an-item"><input type="checkbox" class="st-an-cb" value="dog"> dog</label>' +
+    '<label class="st-an-item"><input type="checkbox" class="st-an-cb" value="cat"> cat</label>' +
+    '<label class="st-an-item"><input type="checkbox" class="st-an-cb" value="bear"> bear</label>';
+
+function getAnalyticsForStream(sid) {
+    if (!sid) return { enabled: false, plates: false, objects: [] };
+    const cams = (currentConfig.analytics && currentConfig.analytics.cameras) || {};
+    let entry = cams[sid];
+    if (!entry) {
+        entry = cams['default'] || { enabled: false, plates: false, objects: [] };
+    }
+    return {
+        enabled: entry.enabled !== false,
+        plates: !!entry.plates,
+        objects: Array.isArray(entry.objects) ? entry.objects.slice() : [],
+    };
+}
+
+// =====================================================================
+// СЕРВЕРЫ
 // =====================================================================
 function addServerRow(name, url) {
     const tbody = document.querySelector('#servers-table tbody');
@@ -452,26 +551,70 @@ async function testServer(btn) {
 }
 
 // =====================================================================
-// ПОТОКИ — строки в таблице
+// ПОТОКИ — запись = <tbody> с главной строкой + раскрывающейся
 // =====================================================================
-function addStreamRow(name, url, enabled, isNew) {
-    const tbody = document.querySelector('#streams-table tbody');
-    const tr = document.createElement('tr');
-    if (isNew) tr.dataset.isNew = '1';
+function addStreamRow(name, url, enabled, isNew, analytics) {
+    const table = document.getElementById('streams-table');
+
+    const sid = streamIdFromUrl(url || '');
+    const an = analytics || getAnalyticsForStream(sid);
     const checked = (enabled !== false) ? ' checked' : '';
-    tr.innerHTML =
-        '<td style="text-align:center">' +
-            '<input type="checkbox" class="st-enabled"' + checked + '>' +
-        '</td>' +
-        '<td><input type="text" class="st-name" value="' + escapeHtml(name || '') +
-            '" placeholder="Название" style="width:100%"></td>' +
-        '<td><input type="text" class="st-url" value="' + escapeHtml(url || '') +
-            '" placeholder="http://192.168.1.101:8889/path/" style="width:100%"></td>' +
-        '<td>' +
-            '<button class="btn-sm danger" type="button" ' +
-                'onclick="this.closest(\'tr\').remove()">✕</button>' +
-        '</td>';
-    tbody.appendChild(tr);
+    const anChecked = an.enabled ? ' checked' : '';
+    const anHidden = an.enabled ? '' : ' hidden';
+
+    const tbody = document.createElement('tbody');
+    tbody.className = 'stream-group';
+    if (isNew) tbody.dataset.isNew = '1';
+
+    tbody.innerHTML =
+        '<tr class="stream-main-row">' +
+            '<td style="text-align:center">' +
+                '<input type="checkbox" class="st-enabled"' + checked + '>' +
+            '</td>' +
+            '<td style="text-align:center">' +
+                '<input type="checkbox" class="st-an-enabled"' + anChecked + '>' +
+            '</td>' +
+            '<td><input type="text" class="st-name" value="' + escapeHtml(name || '') +
+                '" placeholder="Название" style="width:100%"></td>' +
+            '<td><input type="text" class="st-url" value="' + escapeHtml(url || '') +
+                '" placeholder="http://192.168.1.101:8889/path/" style="width:100%"></td>' +
+            '<td>' +
+                '<button class="btn-sm danger st-remove" type="button">✕</button>' +
+            '</td>' +
+        '</tr>' +
+        '<tr class="stream-an-row' + anHidden + '">' +
+            '<td colspan="5">' +
+                '<div class="st-an-box">' + ANALYTICS_CHECKBOXES_HTML + '</div>' +
+            '</td>' +
+        '</tr>';
+
+    table.appendChild(tbody);
+
+    // Заполняем чекбоксы выбранными значениями
+    const selectedValues = new Set();
+    if (an.plates) selectedValues.add('__plates__');
+    (an.objects || []).forEach(o => selectedValues.add(o));
+    tbody.querySelectorAll('input.st-an-cb').forEach(cb => {
+        cb.checked = selectedValues.has(cb.value);
+    });
+
+    // Показ/скрытие строки чекбоксов при переключении «Аналитика»
+    const anEnabled = tbody.querySelector('.st-an-enabled');
+    const anRow = tbody.querySelector('.stream-an-row');
+
+    function syncAnVisibility() {
+        if (anEnabled.checked) {
+            anRow.classList.remove('hidden');
+        } else {
+            anRow.classList.add('hidden');
+        }
+    }
+    anEnabled.addEventListener('change', syncAnVisibility);
+
+    // Удаление
+    tbody.querySelector('.st-remove').addEventListener('click', () => {
+        tbody.remove();
+    });
 }
 
 async function refreshStreams() {
@@ -497,8 +640,8 @@ async function refreshStreams() {
         const errors = data.errors || [];
 
         const existingUrls = new Set();
-        document.querySelectorAll('#streams-table tbody tr').forEach(tr => {
-            const u = tr.querySelector('.st-url').value.trim();
+        document.querySelectorAll('#streams-table tbody.stream-group').forEach(tb => {
+            const u = tb.querySelector('.st-url').value.trim();
             if (u) existingUrls.add(u);
         });
 
@@ -540,10 +683,10 @@ function collectServers() {
 
 function collectStreams() {
     const out = [];
-    document.querySelectorAll('#streams-table tbody tr').forEach((tr, i) => {
-        const enabled = tr.querySelector('.st-enabled').checked;
-        const name = tr.querySelector('.st-name').value.trim();
-        const url = tr.querySelector('.st-url').value.trim();
+    document.querySelectorAll('#streams-table tbody.stream-group').forEach((tb, i) => {
+        const enabled = tb.querySelector('.st-enabled').checked;
+        const name = tb.querySelector('.st-name').value.trim();
+        const url = tb.querySelector('.st-url').value.trim();
         if (!url) return;
         out.push({
             name: name || ('Камера ' + (i + 1)),
@@ -554,8 +697,32 @@ function collectStreams() {
     return out;
 }
 
+function collectAnalyticsCameras() {
+    const out = {};
+    document.querySelectorAll('#streams-table tbody.stream-group').forEach(tb => {
+        const url = tb.querySelector('.st-url').value.trim();
+        if (!url) return;
+        const sid = streamIdFromUrl(url);
+        if (!sid) return;
+
+        const enabled = tb.querySelector('.st-an-enabled').checked;
+        const checkedCbs = tb.querySelectorAll('.st-an-cb:checked');
+        const values = Array.from(checkedCbs).map(cb => cb.value);
+
+        const plates = values.includes('__plates__');
+        const objects = values.filter(v => v !== '__plates__');
+
+        out[sid] = {
+            enabled: enabled,
+            plates: plates,
+            objects: objects,
+        };
+    });
+    return out;
+}
+
 // =====================================================================
-// НАСТРОЙКИ — открытие/закрытие
+// НАСТРОЙКИ — открытие / закрытие
 // =====================================================================
 function openSettings() {
     document.getElementById('cfg-title').value = currentConfig.title || '';
@@ -565,14 +732,18 @@ function openSettings() {
     srvTbody.innerHTML = '';
     (currentConfig.servers || []).forEach(s => addServerRow(s.name, s.url));
 
-    const stTbody = document.querySelector('#streams-table tbody');
-    stTbody.innerHTML = '';
-    (currentConfig.streams || []).forEach(s =>
-        addStreamRow(s.name, s.url, s.enabled !== false, false));
+    // Удаляем все <tbody class="stream-group">
+    document.querySelectorAll('#streams-table tbody.stream-group')
+        .forEach(tb => tb.remove());
+
+    (currentConfig.streams || []).forEach(s => {
+        const sid = streamIdFromUrl(s.url || '');
+        const an = getAnalyticsForStream(sid);
+        addStreamRow(s.name, s.url, s.enabled !== false, false, an);
+    });
 
     document.getElementById('refresh-status').textContent = '';
 
-    // Загружаем безопасность, если раздел есть в DOM (только admin)
     if (document.getElementById('users-table')) {
         loadSecurity();
     }
@@ -590,7 +761,23 @@ async function saveSettings() {
         layout: document.getElementById('cfg-layout').value,
         servers: collectServers(),
         streams: collectStreams(),
+        analytics_cameras: collectAnalyticsCameras(),
     };
+
+    // Защита: не даём сохранить пустой список потоков, если до этого он был
+    const prevStreams = (currentConfig.streams || []);
+    if (payload.streams.length === 0 && prevStreams.length > 0) {
+        if (!confirm(
+            'Внимание!\n\n' +
+            'Список потоков на экране пуст, а в конфиге было ' +
+            prevStreams.length + ' потоков.\n\n' +
+            'Если сохранить сейчас — ВСЕ потоки будут удалены, ' +
+            'аналитика остановится.\n\n' +
+            'Всё равно сохранить?'
+        )) {
+            return;
+        }
+    }
 
     try {
         const r = await fetch('/api/config', {
@@ -602,8 +789,12 @@ async function saveSettings() {
         if (!r.ok) throw new Error(data.error || 'Ошибка сохранения');
 
         Object.assign(currentConfig, data.config);
-        document.getElementById('app-title').textContent = currentConfig.title;
+
+        // Защита от null
+        const titleEl = document.getElementById('app-title');
+        if (titleEl) titleEl.textContent = currentConfig.title;
         document.title = currentConfig.title;
+
         renderGrid(currentConfig.streams, currentConfig.layout);
         closeSettings();
     } catch (e) {

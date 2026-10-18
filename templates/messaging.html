@@ -1,0 +1,916 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Уведомления — VHS-Viewer</title>
+    <style>
+        :root {
+            --bg: #14161a; --panel: #1e2126; --border: #2a2f37;
+            --text: #e8e8e8; --muted: #8b96a5; --accent: #4da3ff;
+            --ok: #4caf50; --warn: #f0ad4e; --danger: #e05252;
+            --cat-plate: #2c7a2c;
+            --cat-person: #b06d10;
+            --cat-vehicle: #1f5fa8;
+            --cat-animal: #8a2c2c;
+            --cat-object: #4a4a4a;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: Arial, sans-serif;
+            background: var(--bg); color: var(--text);
+        }
+        header {
+            display: flex; align-items: center; gap: 16px;
+            padding: 12px 20px; background: var(--panel);
+            border-bottom: 1px solid var(--border);
+        }
+        header h1 { font-size: 1.1em; margin: 0; color: var(--accent); }
+        header nav { display: flex; gap: 14px; margin-left: 20px; }
+        header nav a {
+            color: var(--text); text-decoration: none;
+            padding: 6px 10px; border-radius: 6px; font-size: 0.92em;
+        }
+        header nav a:hover { background: #2a2f37; }
+        header nav a.active { background: #2a6df4; color: #fff; }
+        header .user { margin-left: auto; color: var(--muted); font-size: 0.9em; }
+        header .user b { color: var(--text); }
+
+        main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+
+        .top-bar {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 16px;
+        }
+        .top-bar h2 { margin: 0; font-size: 1em; color: #cfd6e0; }
+        .top-bar .right { margin-left: auto; display: flex; gap: 8px; }
+
+        .btn {
+            padding: 8px 16px; border: none; border-radius: 4px;
+            cursor: pointer; font-size: 0.92em;
+        }
+        .btn.primary { background: #2a6df4; color: #fff; }
+        .btn.secondary { background: #3a4150; color: #fff; }
+        .btn.danger { background: var(--danger); color: #fff; }
+        .btn:hover { opacity: 0.9; }
+        .btn-sm {
+            padding: 5px 12px; border: none; border-radius: 4px;
+            cursor: pointer; font-size: 0.85em;
+        }
+        .btn-sm.primary { background: #2a6df4; color: #fff; }
+        .btn-sm.secondary { background: #3a4150; color: #fff; }
+        .btn-sm.danger { background: var(--danger); color: #fff; }
+        .btn-sm:hover { opacity: 0.9; }
+
+        .channel-card {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 14px 18px; margin-bottom: 12px;
+        }
+        .channel-card.disabled { opacity: 0.65; }
+        .channel-card .head {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 8px; flex-wrap: wrap;
+        }
+        .channel-card .name {
+            font-size: 1.05em; font-weight: 600; color: var(--text);
+        }
+        .channel-card .cid {
+            font-family: Consolas, monospace; font-size: 0.85em;
+            color: var(--muted); background: #14161a;
+            padding: 2px 6px; border-radius: 3px;
+        }
+        .channel-card .badge {
+            padding: 2px 8px; border-radius: 10px;
+            font-size: 0.75em; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.03em;
+        }
+        .channel-card .badge.on  { background: rgba(76,175,80,0.2); color: #57d87a; }
+        .channel-card .badge.off { background: rgba(224,82,82,0.15); color: #f16a6a; }
+        .channel-card .badge.type-tg  { background: rgba(0,136,204,0.2); color: #4da3ff; }
+        .channel-card .badge.type-wh  { background: rgba(176,109,16,0.2); color: #f0ad4e; }
+        .channel-card .actions {
+            margin-left: auto; display: flex; gap: 6px;
+        }
+        .channel-card .meta {
+            display: flex; flex-wrap: wrap; gap: 16px;
+            color: var(--muted); font-size: 0.85em;
+            margin-top: 4px;
+        }
+        .channel-card .meta b { color: var(--text); font-weight: 500; }
+        .channel-card .meta .url {
+            font-family: Consolas, monospace;
+            max-width: 380px; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap;
+        }
+        .channel-card .meta .cats { display: flex; gap: 4px; flex-wrap: wrap; }
+        .channel-card .meta .cat-chip {
+            padding: 1px 8px; border-radius: 8px;
+            font-size: 0.9em; color: #fff;
+        }
+        .cat-chip.cat-plate   { background: var(--cat-plate); }
+        .cat-chip.cat-person  { background: var(--cat-person); }
+        .cat-chip.cat-vehicle { background: var(--cat-vehicle); }
+        .cat-chip.cat-animal  { background: var(--cat-animal); }
+        .cat-chip.cat-object  { background: var(--cat-object); }
+
+        .empty {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 40px;
+            text-align: center; color: var(--muted);
+        }
+
+        /* Модалка */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.75); z-index: 100;
+            align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 20px 24px;
+            width: 820px; max-width: 95vw;
+            max-height: 92vh; overflow-y: auto;
+        }
+        .modal h2 { margin-top: 0; font-size: 1.1em; color: #cfd6e0; }
+        .modal h3 {
+            margin: 20px 0 8px; font-size: 0.95em; color: var(--muted);
+            border-bottom: 1px solid var(--border); padding-bottom: 6px;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .modal label {
+            display: flex; flex-direction: column; gap: 4px;
+            color: var(--muted); font-size: 0.85em; margin-bottom: 12px;
+        }
+        .modal label.check {
+            display: inline-flex; align-items: center; gap: 6px;
+            color: var(--text); font-size: 0.95em; cursor: pointer;
+            flex-direction: row; margin: 0 0 12px;
+        }
+        .modal input[type=text],
+        .modal input[type=password],
+        .modal input[type=number],
+        .modal select,
+        .modal textarea {
+            background: #14161a; color: var(--text);
+            border: 1px solid var(--border); border-radius: 4px;
+            padding: 8px; font-size: 0.95em; font-family: inherit;
+        }
+        .modal textarea {
+            font-family: Consolas, monospace;
+            font-size: 0.9em; resize: vertical;
+            min-height: 110px;
+        }
+        .modal input:focus,
+        .modal select:focus,
+        .modal textarea:focus { outline: 1px solid #4da3ff; }
+        .modal input[readonly] {
+            background: #0a0b0e; color: var(--muted);
+            cursor: not-allowed;
+        }
+
+        .grid2 {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px;
+        }
+        .grid3 {
+            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px 20px;
+        }
+        .grid4 {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6px 12px;
+        }
+        .hidden { display: none !important; }
+
+        /* Категории */
+        .cats-row {
+            display: flex; flex-wrap: wrap; gap: 6px;
+            padding: 8px 0;
+        }
+        .cats-row label {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 5px 10px; border-radius: 14px;
+            background: #2a2f37; color: #cfd6e0;
+            font-size: 0.85em; cursor: pointer; user-select: none;
+            border: 1px solid transparent; margin: 0;
+        }
+        .cats-row label:hover { background: #353b44; }
+        .cats-row label input { display: none; }
+        .cats-row label.checked {
+            background: #2a6df4; color: #fff; border-color: #4da3ff;
+        }
+        .cats-row label.cat-plate.checked   { background: var(--cat-plate); border-color: #4caf50; }
+        .cats-row label.cat-person.checked  { background: var(--cat-person); border-color: #f0ad4e; }
+        .cats-row label.cat-vehicle.checked { background: var(--cat-vehicle); border-color: #4da3ff; }
+        .cats-row label.cat-animal.checked  { background: var(--cat-animal); border-color: #e05252; }
+        .cats-row label.cat-object.checked  { background: var(--cat-object); border-color: #888; }
+
+        /* Камеры */
+        .cams-grid {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 6px 12px; padding: 10px 12px;
+            background: #14161a; border: 1px solid var(--border);
+            border-radius: 4px; max-height: 180px; overflow-y: auto;
+        }
+        .cams-grid label {
+            display: flex; flex-direction: row; align-items: center;
+            gap: 6px; color: var(--text); font-size: 0.9em;
+            cursor: pointer; margin: 0;
+        }
+        .cams-grid label input { accent-color: #2a6df4; }
+        .cams-grid .cam-id {
+            color: var(--muted); font-size: 0.8em;
+            font-family: Consolas, monospace;
+        }
+        .cams-actions {
+            display: flex; gap: 8px; margin-bottom: 8px;
+        }
+
+        /* Плейсхолдеры */
+        .placeholders {
+            background: #0a0b0e; padding: 8px 12px;
+            border-radius: 4px; border: 1px solid var(--border);
+            font-family: Consolas, monospace; font-size: 0.8em;
+            color: var(--muted); margin-top: 4px;
+            line-height: 1.7;
+        }
+        .placeholders code {
+            color: #6cb2ff; padding: 1px 4px;
+            background: #14161a; border-radius: 2px;
+            cursor: pointer;
+        }
+        .placeholders code:hover { background: #1e2126; color: #fff; }
+
+        .hint {
+            color: var(--muted); font-size: 0.8em; margin: 4px 0 12px;
+        }
+        .hint b { color: var(--text); }
+
+        .modal-actions {
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 8px; margin-top: 20px;
+            padding-top: 16px; border-top: 1px solid var(--border);
+        }
+        .modal-actions .right { display: flex; gap: 8px; }
+
+        .toast {
+            position: fixed; top: 20px; right: 20px; z-index: 200;
+            padding: 12px 20px; border-radius: 6px;
+            font-size: 0.9em; max-width: 400px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            opacity: 0; transform: translateY(-20px);
+            transition: opacity 0.2s, transform 0.2s;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.ok { background: #2c7a2c; color: #fff; }
+        .toast.err { background: var(--danger); color: #fff; }
+
+        .log-card {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 16px 20px; margin-top: 24px;
+        }
+        .log-card h2 {
+            margin: 0 0 12px; font-size: 0.95em; color: #cfd6e0;
+            display: flex; align-items: center; gap: 10px;
+        }
+        pre.log {
+            background: #0a0b0e; color: #cfd6e0;
+            padding: 10px 12px; border-radius: 4px;
+            border: 1px solid var(--border);
+            font-family: Consolas, monospace; font-size: 0.8em;
+            max-height: 300px; overflow: auto;
+            white-space: pre-wrap; word-break: break-all;
+            margin: 0;
+        }
+
+        footer {
+            text-align: center; color: var(--muted);
+            font-size: 0.8em; padding: 24px;
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>VHS-Viewer · Уведомления</h1>
+    <nav>
+        <a href="{{ url_for('index') }}">Просмотр</a>
+        <a href="{{ url_for('events_page') }}">События</a>
+        <a href="{{ url_for('analytics_page') }}">Аналитика</a>
+        <a href="{{ url_for('relay_page') }}">Реле</a>
+        <a href="{{ url_for('messaging_page') }}" class="active">Уведомления</a>
+        <a href="{{ url_for('about_page') }}">О программе</a>
+    </nav>
+    <div class="user">
+        {% if user %}Вы: <b>{{ user.username }}</b> · <a href="{{ url_for('logout') }}" style="color:var(--muted)">выход</a>{% endif %}
+    </div>
+</header>
+
+<main>
+    <div class="top-bar">
+        <h2>Каналы уведомлений</h2>
+        <div class="right">
+            <button class="btn primary" id="btn-add">+ Добавить канал</button>
+            <button class="btn secondary" id="btn-refresh">Обновить</button>
+        </div>
+    </div>
+
+    <div id="list-container">
+        <div class="empty">Загрузка…</div>
+    </div>
+
+    <div class="log-card">
+        <h2>Журнал отправок <button class="btn-sm secondary" id="log-refresh" style="margin-left:auto">Обновить</button></h2>
+        <pre class="log" id="log">—</pre>
+    </div>
+</main>
+
+<footer>{{ app_footer }} · v{{ version }}</footer>
+
+<!-- Модалка -->
+<div class="modal-overlay" id="modal">
+    <div class="modal">
+        <h2 id="modal-title">Новый канал</h2>
+
+        <h3>Основное</h3>
+        <div class="grid2">
+            <label>
+                ID (латиница, цифры, _ и -)
+                <input id="f-id" type="text" placeholder="tg_admin" maxlength="50">
+            </label>
+            <label>
+                Имя (человеческое)
+                <input id="f-name" type="text" placeholder="Telegram — админ">
+            </label>
+        </div>
+        <div class="grid2">
+            <label>
+                Тип канала
+                <select id="f-type">
+                    <option value="telegram">Telegram</option>
+                    <option value="max">MAX</option>
+                    <option value="webhook">Webhook (HTTP)</option>
+                </select>
+            </label>
+            <div style="display:flex; align-items:flex-end;">
+                <label class="check" style="margin:0">
+                    <input id="f-enabled" type="checkbox"> Канал включён
+                </label>
+            </div>
+        </div>
+
+        <!-- Telegram -->
+        <div id="block-telegram">
+            <h3>Telegram Bot</h3>
+            <div class="grid2">
+                <label>
+                    Bot Token
+                    <input id="f-token" type="password" autocomplete="new-password"
+                           placeholder="оставьте пустым, чтобы не менять">
+                </label>
+                <label>
+                    Chat ID
+                    <input id="f-chat-id" type="text" placeholder="123456789">
+                </label>
+            </div>
+            <p class="hint">
+                Создать бота: <b>@BotFather</b> в Telegram → <code>/newbot</code> → токен.<br>
+                Узнать свой Chat ID: напишите боту <b>@userinfobot</b>.
+            </p>
+        </div>
+
+        <!-- MAX -->
+
+        <div id="block-max" class="hidden">
+            <h3>MAX Bot</h3>
+            <div class="grid2">
+                <label>
+                    MAX Bot Token
+                    <input id="f-max-token" type="password" autocomplete="new-password"
+                           placeholder="оставьте пустым, чтобы не менять">
+                </label>
+                <label>
+                    Тип получателя
+                    <select id="f-max-recipient-type">
+                        <option value="user">Личный диалог (user_id)</option>
+                        <option value="chat">Группа/канал (chat_id)</option>
+                    </select>
+                </label>
+            </div>
+            <label>
+                ID получателя (user_id или chat_id)
+                <input id="f-max-recipient-id" type="text"
+                       placeholder="123456789">
+            </label>
+            <p class="hint">
+                Токен: <b>@MasterBot</b> в MAX или <code>business.max.ru</code> → «Чат-боты».<br>
+                ID: для лички — <code>user_id</code>, для группы — <code>chat_id</code>.
+            </p>
+        </div>
+
+        <!-- Webhook -->
+
+        <div id="block-webhook" class="hidden">
+            <h3>Webhook</h3>
+            <div class="grid2">
+                <label>
+                    URL
+                    <input id="f-url" type="text" placeholder="https://example.com/hook">
+                </label>
+                <label>
+                    Метод
+                    <select id="f-method">
+                        <option value="POST">POST (JSON body)</option>
+                        <option value="GET">GET (query string)</option>
+                    </select>
+                </label>
+            </div>
+            <p class="hint">
+                POST — на сервер уходит JSON <code>{text, event: {...}, snapshot}</code>.<br>
+                GET — параметры <code>?text=...&category=...&camera=...</code>.
+            </p>
+        </div>
+
+        <label>
+            Timeout (сек)
+            <input id="f-timeout" type="number" step="0.5" min="1" max="120" value="10" style="max-width:120px">
+        </label>
+
+        <h3>Фильтры — какие события отправлять</h3>
+        <p class="hint">
+            Если ни одна категория не выбрана — отправляются <b>все</b>.<br>
+            Если ни одна камера не выбрана — со <b>всех</b> камер.
+        </p>
+
+        <label>Категории</label>
+        <div class="cats-row" id="cats-row">
+            <label class="cat-plate"><input type="checkbox" value="plate"> 🚗 Номера</label>
+            <label class="cat-person"><input type="checkbox" value="person"> 👤 Люди</label>
+            <label class="cat-vehicle"><input type="checkbox" value="vehicle"> 🚙 Транспорт</label>
+            <label class="cat-animal"><input type="checkbox" value="animal"> 🐻 Животные</label>
+            <label class="cat-object"><input type="checkbox" value="object"> 📦 Объекты</label>
+        </div>
+
+        <label>Камеры</label>
+        <div class="cams-actions">
+            <button class="btn-sm secondary" type="button" id="cams-all">Выбрать все</button>
+            <button class="btn-sm secondary" type="button" id="cams-none">Очистить</button>
+        </div>
+        <div class="cams-grid" id="cams-grid">
+            <div class="hint" style="grid-column: 1 / -1">Загрузка списка камер…</div>
+        </div>
+
+        <label>
+            Минимальная уверенность (0 — любая, 1 — только 100%)
+            <input id="f-min-conf" type="number" step="0.05" min="0" max="1" value="0" style="max-width:120px">
+        </label>
+
+        <h3>Что отправляем</h3>
+        <label>
+            Шаблон сообщения (пусто = стандартный)
+            <textarea id="f-template" placeholder="Пусто — будет использован шаблон по умолчанию"></textarea>
+        </label>
+        <div class="placeholders">
+            Плейсхолдеры (клик — вставить):
+            <code>{emoji}</code>
+            <code>{category}</code>
+            <code>{category_rus}</code>
+            <code>{label}</code>
+            <code>{plate}</code>
+            <code>{event_rus}</code>
+            <code>{detail}</code>
+            <code>{camera_id}</code>
+            <code>{camera_name}</code>
+            <code>{iso}</code>
+            <code>{confidence}</code>
+            <code>{confidence_pct}</code>
+        </div>
+
+        <div class="grid2">
+            <label class="check" style="margin-top:12px">
+                <input id="f-attach-snapshot" type="checkbox" checked>
+                Прикреплять снапшот (только Telegram)
+            </label>
+            <label>
+                Cooldown одного события (сек)
+                <input id="f-cooldown" type="number" min="0" max="86400" value="0">
+            </label>
+        </div>
+        <p class="hint">
+            Cooldown: чтобы не спамить, одно и то же событие
+            (категория + метка + камера) не отправляется чаще, чем раз в N сек.
+            <b>0</b> — без ограничений.
+        </p>
+
+        <div class="modal-actions">
+            <div>
+                <button class="btn danger" id="btn-delete" style="display:none">🗑 Удалить канал</button>
+            </div>
+            <div class="right">
+                <button class="btn secondary" id="btn-cancel">Отмена</button>
+                <button class="btn primary" id="btn-save">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+    const $ = id => document.getElementById(id);
+    let currentChannels = [];
+    let cameraList = [];
+    let editingId = null;
+
+    const DEFAULT_TEMPLATE =
+        '{emoji} {category_rus} на *{camera_name}*\\n' +
+        '{detail}\\n' +
+        'Время: {iso}\\n' +
+        'Уверенность: {confidence_pct}%';
+
+    function esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function toast(msg, kind) {
+        const el = $('toast');
+        el.textContent = msg;
+        el.className = 'toast ' + (kind || 'ok');
+        void el.offsetWidth;
+        el.classList.add('show');
+        setTimeout(() => el.classList.remove('show'), 2800);
+    }
+
+    function streamIdFromUrl(url) {
+        if (!url) return '';
+        let clean = String(url).split('?')[0].split('#')[0];
+        clean = clean.replace(/\/+$/, '');
+        const parts = clean.split('/').filter(Boolean);
+        return parts.length ? parts[parts.length - 1] : '';
+    }
+
+    // ---------- Камеры ----------
+    async function loadCameras() {
+        try {
+            const r = await fetch('/api/config', { credentials: 'same-origin' });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const cfg = await r.json();
+            const streams = (cfg.streams || []).filter(s => s.enabled !== false);
+            cameraList = streams.map(s => ({
+                sid: streamIdFromUrl(s.url || ''),
+                name: s.name || streamIdFromUrl(s.url || ''),
+            })).filter(c => c.sid);
+        } catch (e) {
+            try {
+                const r2 = await fetch('/api/events/cameras',
+                                       { credentials: 'same-origin' });
+                const j2 = await r2.json();
+                cameraList = (j2.cameras || []).map(c => ({ sid: c.id, name: c.name }));
+            } catch (e2) {
+                cameraList = [];
+            }
+        }
+    }
+
+    function renderCamsGrid(selectedSids) {
+        const grid = $('cams-grid');
+        if (!cameraList.length) {
+            grid.innerHTML = '<div class="hint" style="grid-column: 1 / -1">Камеры не загружены</div>';
+            return;
+        }
+        const sel = new Set(selectedSids || []);
+        grid.innerHTML = cameraList.map(c =>
+            '<label>' +
+                '<input type="checkbox" class="cam-cb" value="' + esc(c.sid) + '"' +
+                (sel.has(c.sid) ? ' checked' : '') + '>' +
+                '<span>' + esc(c.name) + '</span>' +
+                '<span class="cam-id">' + esc(c.sid) + '</span>' +
+            '</label>'
+        ).join('');
+    }
+
+    // ---------- Категории ----------
+    function renderCats(selectedCats) {
+        const sel = new Set((selectedCats || []).map(s => String(s).toLowerCase()));
+        document.querySelectorAll('#cats-row label').forEach(lab => {
+            const cb = lab.querySelector('input[type=checkbox]');
+            cb.checked = sel.has(cb.value);
+            lab.classList.toggle('checked', cb.checked);
+        });
+    }
+
+    $('cats-row').addEventListener('change', () => {
+        document.querySelectorAll('#cats-row label').forEach(lab => {
+            const cb = lab.querySelector('input[type=checkbox]');
+            lab.classList.toggle('checked', cb.checked);
+        });
+    });
+
+    function collectCats() {
+        return Array.from(
+            document.querySelectorAll('#cats-row input[type=checkbox]:checked')
+        ).map(cb => cb.value);
+    }
+
+    // ---------- Список каналов ----------
+    async function loadList() {
+        $('list-container').innerHTML = '<div class="empty">Загрузка…</div>';
+        try {
+            const r = await fetch('/api/messaging/list',
+                                  { credentials: 'same-origin' });
+            if (r.status === 401) { window.location.href = '/login'; return; }
+            if (r.status === 403) {
+                $('list-container').innerHTML =
+                    '<div class="empty">Только для администратора</div>';
+                return;
+            }
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const j = await r.json();
+            currentChannels = j.channels || [];
+            renderList();
+        } catch (e) {
+            $('list-container').innerHTML =
+                '<div class="empty">Ошибка загрузки: ' + esc(e.message) + '</div>';
+        }
+    }
+
+    function renderList() {
+        const c = $('list-container');
+        if (!currentChannels.length) {
+            c.innerHTML =
+                '<div class="empty">Каналов нет. Нажмите «+ Добавить канал».</div>';
+            return;
+        }
+        c.innerHTML = currentChannels.map(ch => {
+            const cats = (ch.categories || []);
+            const cams = (ch.cameras || []);
+            const camsText = cams.length
+                ? cams.map(cid => {
+                    const cam = cameraList.find(x => x.sid === cid);
+                    return cam ? cam.name : cid;
+                  }).join(', ')
+                : 'все камеры';
+            const catsText = cats.length
+                ? cats.map(x => '<span class="cat-chip cat-' + esc(x) + '">' + esc(x) + '</span>').join('')
+                : '<b>все категории</b>';
+            const disabled = !ch.enabled ? ' disabled' : '';
+            const badge = ch.enabled
+                ? '<span class="badge on">вкл</span>'
+                : '<span class="badge off">выкл</span>';
+            const typeBadge = ch.type === 'telegram'
+                ? '<span class="badge type-tg">Telegram</span>'
+                : '<span class="badge type-wh">Webhook</span>';
+            const target = ch.type === 'telegram'
+                ? 'Chat ID: <b>' + esc(ch.chat_id || '—') + '</b>'
+                : 'URL: <span class="url">' + esc(ch.url || '—') + '</span>';
+            const minConf = (ch.min_confidence != null && ch.min_confidence > 0)
+                ? '≥ ' + Math.round(ch.min_confidence * 100) + '%'
+                : 'любая';
+            const cd = ch.cooldown_sec || 0;
+
+            return (
+                '<div class="channel-card' + disabled + '" data-id="' + esc(ch.id) + '">' +
+                    '<div class="head">' +
+                        '<span class="name">' + esc(ch.name || ch.id) + '</span>' +
+                        '<span class="cid">' + esc(ch.id) + '</span>' +
+                        typeBadge + badge +
+                        '<div class="actions">' +
+                            '<button class="btn-sm primary" data-act="edit">✎ Редактировать</button>' +
+                            '<button class="btn-sm secondary" data-act="test">📨 Тест</button>' +
+                            '<button class="btn-sm danger" data-act="delete">🗑</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="meta">' +
+                        '<span>' + target + '</span>' +
+                        '<span>Категории: <span class="cats">' + catsText + '</span></span>' +
+                        '<span>Камеры: <b>' + esc(camsText) + '</b></span>' +
+                        '<span>Confidence: <b>' + minConf + '</b></span>' +
+                        '<span>Cooldown: <b>' + cd + 'с</b></span>' +
+                    '</div>' +
+                '</div>'
+            );
+        }).join('');
+
+        c.querySelectorAll('.channel-card').forEach(card => {
+            card.querySelectorAll('[data-act]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = card.dataset.id;
+                    const act = btn.dataset.act;
+                    if (act === 'edit') openModal(id);
+                    else if (act === 'test') testChannel(id);
+                    else if (act === 'delete') deleteChannel(id);
+                });
+            });
+        });
+    }
+
+    // ---------- Модалка ----------
+    async function openModal(channelId) {
+        editingId = channelId;
+        const isNew = channelId === null;
+
+        $('modal-title').textContent = isNew ? 'Новый канал' : 'Редактирование канала';
+
+        let ch = {
+            id: '', name: '', type: 'telegram', enabled: false,
+            token: '', chat_id: '', url: '', method: 'POST', timeout: 10,
+            categories: [], cameras: [], min_confidence: 0,
+            template: '', attach_snapshot: true, cooldown_sec: 0,
+        };
+
+        if (!isNew) {
+            try {
+                const resp = await fetch('/api/messaging/' + encodeURIComponent(channelId),
+                                          { credentials: 'same-origin' });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                ch = await resp.json();
+            } catch (e) {
+                toast('Не удалось загрузить канал: ' + e.message, 'err');
+                return;
+            }
+        }
+
+        $('f-id').value = ch.id || '';
+        $('f-id').readOnly = !isNew;
+        $('f-name').value = ch.name || '';
+        $('f-type').value = (ch.type || 'telegram').toLowerCase();
+        $('f-enabled').checked = !!ch.enabled;
+        $('f-token').value = '';  // всегда пустой при открытии
+        $('f-chat-id').value = ch.chat_id || '';
+        $('f-url').value = ch.url || '';
+        $('f-method').value = (ch.method || 'POST').toUpperCase();
+        $('f-timeout').value = ch.timeout != null ? ch.timeout : 10;
+        $('f-min-conf').value = ch.min_confidence != null ? ch.min_confidence : 0;
+        $('f-template').value = ch.template || '';
+        $('f-attach-snapshot').checked = ch.attach_snapshot !== false;
+        $('f-cooldown').value = ch.cooldown_sec != null ? ch.cooldown_sec : 0;
+
+        if (!cameraList.length) await loadCameras();
+        renderCamsGrid(ch.cameras || []);
+        renderCats(ch.categories || []);
+
+        syncTypeBlocks();
+        $('btn-delete').style.display = isNew ? 'none' : 'inline-block';
+        $('modal').classList.add('active');
+    }
+
+        function syncTypeBlocks() {
+        const t = $('f-type').value;
+        $('block-telegram').classList.toggle('hidden', t !== 'telegram');
+        $('block-max').classList.toggle('hidden', t !== 'max');
+        $('block-webhook').classList.toggle('hidden', t !== 'webhook');
+    }
+
+    function closeModal() {
+        $('modal').classList.remove('active');
+        editingId = null;
+    }
+
+    async function saveChannel() {
+        const id = $('f-id').value.trim();
+        if (!id) { toast('ID обязателен', 'err'); return; }
+        if (!/^[a-zA-Z0-9_\-]{1,50}$/.test(id)) {
+            toast('ID: только латиница, цифры, _ и - (до 50)', 'err');
+            return;
+        }
+
+        const body = {
+            id: id,
+            name: $('f-name').value.trim() || id,
+            type: $('f-type').value,
+            enabled: $('f-enabled').checked,
+            chat_id: $('f-chat-id').value.trim(),
+            url: $('f-url').value.trim(),
+            method: $('f-method').value,
+            timeout: parseFloat($('f-timeout').value) || 10,
+            categories: collectCats(),
+            cameras: Array.from(document.querySelectorAll('#cams-grid .cam-cb:checked'))
+                        .map(cb => cb.value),
+            min_confidence: parseFloat($('f-min-conf').value) || 0,
+            template: $('f-template').value,
+            attach_snapshot: $('f-attach-snapshot').checked,
+            cooldown_sec: parseInt($('f-cooldown').value, 10) || 0,
+        };
+        const tok = $('f-token').value;
+        if (tok) body.token = tok;
+
+        try {
+            const r = await fetch('/api/messaging/' + encodeURIComponent(id), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(body),
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+            closeModal();
+            toast('Сохранено', 'ok');
+            await loadList();
+        } catch (e) {
+            toast('Ошибка: ' + e.message, 'err');
+        }
+    }
+
+    async function deleteChannel(id) {
+        if (!confirm('Удалить канал "' + id + '"?')) return;
+        try {
+            const r = await fetch('/api/messaging/' + encodeURIComponent(id), {
+                method: 'DELETE',
+                credentials: 'same-origin',
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+            toast('Удалено', 'ok');
+            await loadList();
+        } catch (e) {
+            toast('Ошибка: ' + e.message, 'err');
+        }
+    }
+
+    async function testChannel(id) {
+        toast('Отправляю тестовое сообщение…', 'ok');
+        try {
+            const r = await fetch('/api/messaging/' + encodeURIComponent(id) + '/test', {
+                method: 'POST',
+                credentials: 'same-origin',
+            });
+            const j = await r.json();
+            if (j.ok) toast('✓ Сообщение отправлено', 'ok');
+            else toast('✗ ' + (j.error || 'ошибка'), 'err');
+        } catch (e) {
+            toast('✗ ' + e.message, 'err');
+        }
+    }
+
+    // ---------- Журнал ----------
+    async function loadLog() {
+        try {
+            const r = await fetch('/api/messaging/log?limit=100',
+                                  { credentials: 'same-origin' });
+            if (!r.ok) return;
+            const j = await r.json();
+            const lines = j.lines || [];
+            $('log').textContent = lines.length
+                ? lines.join('\n')
+                : '— пусто (ещё не было отправок) —';
+        } catch (e) {
+            $('log').textContent = 'Ошибка загрузки: ' + e.message;
+        }
+    }
+
+    // ---------- Обработчики ----------
+    $('btn-add').addEventListener('click', () => openModal(null));
+    $('btn-refresh').addEventListener('click', loadList);
+    $('btn-cancel').addEventListener('click', closeModal);
+    $('btn-save').addEventListener('click', saveChannel);
+    $('btn-delete').addEventListener('click', () => {
+        if (editingId) {
+            const id = editingId;
+            closeModal();
+            deleteChannel(id);
+        }
+    });
+
+    $('f-type').addEventListener('change', syncTypeBlocks);
+
+    $('cams-all').addEventListener('click', () => {
+        document.querySelectorAll('#cams-grid .cam-cb').forEach(cb => cb.checked = true);
+    });
+    $('cams-none').addEventListener('click', () => {
+        document.querySelectorAll('#cams-grid .cam-cb').forEach(cb => cb.checked = false);
+    });
+
+    $('log-refresh').addEventListener('click', loadLog);
+
+    $('modal').addEventListener('click', (ev) => {
+        if (ev.target === $('modal')) closeModal();
+    });
+
+    // Клик по плейсхолдеру — вставить в textarea в позицию курсора
+    document.querySelectorAll('.placeholders code').forEach(code => {
+        code.addEventListener('click', () => {
+            const ta = $('f-template');
+            const text = code.textContent;
+            const start = ta.selectionStart || 0;
+            const end = ta.selectionEnd || 0;
+            const val = ta.value;
+            ta.value = val.slice(0, start) + text + val.slice(end);
+            ta.focus();
+            ta.selectionStart = ta.selectionEnd = start + text.length;
+        });
+    });
+
+    // ---------- Инициализация ----------
+    (async () => {
+        await loadCameras();
+        await loadList();
+        await loadLog();
+        setInterval(loadLog, 10000);
+    })();
+})();
+</script>
+</body>
+</html>

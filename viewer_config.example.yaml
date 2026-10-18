@@ -1,40 +1,112 @@
-# =====================================================================
-#  VHS-Viewer — пример конфигурации
-# =====================================================================
-#  Скопируйте в viewer_config.yaml и заполните своими значениями:
-#      copy viewer_config.example.yaml viewer_config.yaml
-# =====================================================================
-
 title: VHS-Viewer
 layout: 2x2
-
-# --- Серверы VHS-Streamer ---
-# Укажите один или несколько серверов. Viewer сам подтянет с них
-# список потоков через /api/public/streams.
 servers:
-  - name: Главный
-    url: http://192.168.1.101:8000
-
-# --- Потоки ---
-# Пустой список — заполнится автоматически кнопкой
-# «Обновить список потоков» в настройках UI.
-streams: []
-
-# --- Безопасность ---
+- name: local
+  url: http://127.0.0.1:8000
+streams:
+- name: Встроенная камера / analog_1_s1
+  url: http://127.0.0.1:8889/analog_1_s1/
+  enabled: true
+- name: 3 / 3_s1
+  url: http://127.0.0.1:8889/3_s1/
+  enabled: true
+- name: sub_streem / 4floor2_s1
+  url: http://127.0.0.1:8889/4floor2_s1/
+  enabled: true
 security:
-  # Если false — авторизация отключена (доступ открыт всем в сети).
-  # НЕ рекомендуется для production.
   auth_enabled: true
-
-  # Время жизни сессии в часах.
   session_lifetime_hours: 24
-
-  # Пользователи. Пароли хранятся в открытом виде —
-  # обеспечьте защиту самого файла viewer_config.yaml.
   users:
-    - username: admin
-      password: "CHANGE-ME"
-      role: admin
-    - username: operator
-      password: "CHANGE-ME"
-      role: admin
+  - username: admin
+    password: admin
+    role: admin
+  - username: operator
+    password: CHANGE-ME
+    role: viewer
+analytics:
+  enabled: true
+  autostart: true
+  objects_per_camera: false
+  streamer_url: http://127.0.0.1:8000
+  rtsp_base: null
+  poll_interval: 15
+  conf_threshold: 0.5
+  object_model: yolov8n.pt
+  object_conf: 0.4
+  object_imgsz: 640
+  analyze_every_n: 1
+  cameras:
+    default:
+      enabled: false
+      plates: false
+      objects: []
+      analyze_every_n: 2
+      object_imgsz: 416
+    analog_1_s1:
+      enabled: true
+      plates: true
+      objects:
+      - person
+      - dog
+      - bear
+      analyze_every_n: 2
+      object_imgsz: 416
+    3_s1:
+      enabled: true
+      plates: false
+      objects:
+      - person
+      - dog
+      analyze_every_n: 2
+      object_imgsz: 416
+    4floor2_s1:
+      enabled: true
+      plates: false
+      objects:
+      - person
+      - dog
+      - cat
+relay:
+  relays:
+  - id: gate_main
+    name: Шлагбаум главный
+    enabled: true
+    url_open: http://192.168.1.100/relay?on=1
+    url_close: http://192.168.1.100/relay?on=0
+    method: GET
+    timeout: 5.0
+    open_duration_sec: 5
+    cooldown_sec: 30
+    cameras:
+    - analog_1_s1
+    whitelist:
+    - А798АР177
+    - В123ВС50
+messaging:
+  channels:
+  - id: tg_admin
+    name: Telegram — админ
+    type: telegram
+    enabled: false
+    token: ''
+    chat_id: ''
+    categories: []
+    cameras: []
+    min_confidence: 0.0
+    attach_snapshot: true
+    cooldown_sec: 5
+    template: ''
+  - id: wh_plates
+    name: Webhook — номера
+    type: webhook
+    enabled: false
+    url: ''
+    method: POST
+    timeout: 10.0
+    categories:
+    - plate
+    cameras: []
+    min_confidence: 0.6
+    template: PLATE:{plate} CAM:{camera_id}
+    attach_snapshot: false
+    cooldown_sec: 15

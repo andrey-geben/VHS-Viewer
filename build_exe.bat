@@ -1,6 +1,6 @@
 @echo off
 REM =====================================================================
-REM  VHS-Viewer — сборка .exe
+REM  VHS-Viewer — сборка .exe (с аналитикой)
 REM =====================================================================
 chcp 65001 >nul
 setlocal
@@ -28,7 +28,7 @@ echo [*] Очищаю предыдущую сборку...
 if exist build rmdir /S /Q build
 if exist dist rmdir /S /Q dist
 
-echo [*] Собираю...
+echo [*] Собираю (может занять 3-10 минут)...
 .venv\Scripts\python.exe -m PyInstaller app.spec --noconfirm
 
 if errorlevel 1 (
@@ -40,23 +40,30 @@ if errorlevel 1 (
 
 set OUTDIR=dist\VHS-Viewer
 
-echo [*] Копирую внешние файлы...
+echo [*] Копирую внешние файлы (БЕЗ секретов)...
+
+REM --- ВАЖНО: НЕ копируем viewer_config.yaml (там пароли и токены) ---
+REM Копируем только example — пользователь скопирует сам и заполнит.
 
 if exist viewer_config.example.yaml (
     copy /Y viewer_config.example.yaml "%OUTDIR%\viewer_config.example.yaml" >nul
 )
-if exist viewer_config.yaml (
-    copy /Y viewer_config.yaml "%OUTDIR%\viewer_config.yaml" >nul
-) else (
-    echo [i] viewer_config.yaml не найден — копирую из example
-    copy /Y viewer_config.example.yaml "%OUTDIR%\viewer_config.yaml" >nul
-)
+
 if exist LICENSE (
     copy /Y LICENSE "%OUTDIR%\LICENSE" >nul
+)
+if exist README.md (
+    copy /Y README.md "%OUTDIR%\README.md" >nul
 )
 
 copy /Y start.bat "%OUTDIR%\start.bat" >nul 2>&1
 copy /Y stop.bat  "%OUTDIR%\stop.bat"  >nul 2>&1
+
+REM --- Опционально: положить модели рядом, если есть в папке models/ ---
+if exist models (
+    if not exist "%OUTDIR%\models" mkdir "%OUTDIR%\models"
+    xcopy /Y /Q models\* "%OUTDIR%\models\" >nul 2>&1
+)
 
 echo.
 echo ============================================
@@ -65,6 +72,10 @@ echo ============================================
 echo.
 echo Папка:  %OUTDIR%
 echo Запуск: %OUTDIR%\VHS-Viewer.exe
+echo.
+echo НЕ ЗАБУДЬТЕ при первом запуске:
+echo  1. Скопировать viewer_config.example.yaml -^> viewer_config.yaml
+echo  2. Заполнить servers, пароли, токены
 echo.
 endlocal
 pause

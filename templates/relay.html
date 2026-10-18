@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <title>Реле — VHS-Viewer</title>
+    <style>
+        :root {
+            --bg: #14161a; --panel: #1e2126; --border: #2a2f37;
+            --text: #e8e8e8; --muted: #8b96a5; --accent: #4da3ff;
+            --ok: #4caf50; --warn: #f0ad4e; --danger: #e05252;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: Arial, sans-serif;
+            background: var(--bg); color: var(--text);
+        }
+        header {
+            display: flex; align-items: center; gap: 16px;
+            padding: 12px 20px; background: var(--panel);
+            border-bottom: 1px solid var(--border);
+        }
+        header h1 { font-size: 1.1em; margin: 0; color: var(--accent); }
+        header nav { display: flex; gap: 14px; margin-left: 20px; }
+        header nav a {
+            color: var(--text); text-decoration: none;
+            padding: 6px 10px; border-radius: 6px; font-size: 0.92em;
+        }
+        header nav a:hover { background: #2a2f37; }
+        header nav a.active { background: #2a6df4; color: #fff; }
+        header .user { margin-left: auto; color: var(--muted); font-size: 0.9em; }
+        header .user b { color: var(--text); }
+
+        main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+
+        .top-bar {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 16px;
+        }
+        .top-bar h2 { margin: 0; font-size: 1em; color: #cfd6e0; }
+        .top-bar .right { margin-left: auto; display: flex; gap: 8px; }
+
+        .btn {
+            padding: 8px 16px; border: none; border-radius: 4px;
+            cursor: pointer; font-size: 0.92em;
+        }
+        .btn.primary { background: #2a6df4; color: #fff; }
+        .btn.secondary { background: #3a4150; color: #fff; }
+        .btn.danger { background: var(--danger); color: #fff; }
+        .btn:hover { opacity: 0.9; }
+        .btn-sm {
+            padding: 5px 12px; border: none; border-radius: 4px;
+            cursor: pointer; font-size: 0.85em;
+        }
+        .btn-sm.primary { background: #2a6df4; color: #fff; }
+        .btn-sm.secondary { background: #3a4150; color: #fff; }
+        .btn-sm.danger { background: var(--danger); color: #fff; }
+        .btn-sm:hover { opacity: 0.9; }
+
+        /* карточки реле */
+        .relay-card {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 14px 18px; margin-bottom: 12px;
+        }
+        .relay-card.disabled { opacity: 0.65; }
+        .relay-card .head {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 8px; flex-wrap: wrap;
+        }
+        .relay-card .name {
+            font-size: 1.05em; font-weight: 600; color: var(--text);
+        }
+        .relay-card .rid {
+            font-family: Consolas, monospace; font-size: 0.85em;
+            color: var(--muted); background: #14161a;
+            padding: 2px 6px; border-radius: 3px;
+        }
+        .relay-card .badge {
+            padding: 2px 8px; border-radius: 10px;
+            font-size: 0.75em; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.03em;
+        }
+        .relay-card .badge.on  { background: rgba(76,175,80,0.2); color: #57d87a; }
+        .relay-card .badge.off { background: rgba(224,82,82,0.15); color: #f16a6a; }
+        .relay-card .actions {
+            margin-left: auto; display: flex; gap: 6px;
+        }
+        .relay-card .meta {
+            display: flex; flex-wrap: wrap; gap: 16px;
+            color: var(--muted); font-size: 0.85em;
+            margin-top: 4px;
+        }
+        .relay-card .meta b { color: var(--text); font-weight: 500; }
+        .relay-card .meta .url {
+            font-family: Consolas, monospace;
+            max-width: 380px; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap;
+        }
+        .relay-card .meta .url.url-open { color: #6cb2ff; }
+
+        /* пустой список */
+        .empty {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 40px;
+            text-align: center; color: var(--muted);
+        }
+
+        /* модалка */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.75); z-index: 100;
+            align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 20px 24px;
+            width: 780px; max-width: 95vw;
+            max-height: 92vh; overflow-y: auto;
+        }
+        .modal h2 { margin-top: 0; font-size: 1.1em; color: #cfd6e0; }
+        .modal h3 {
+            margin: 20px 0 8px; font-size: 0.95em; color: var(--muted);
+            border-bottom: 1px solid var(--border); padding-bottom: 6px;
+            text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .modal label {
+            display: flex; flex-direction: column; gap: 4px;
+            color: var(--muted); font-size: 0.85em; margin-bottom: 12px;
+        }
+        .modal label.check {
+            display: inline-flex; align-items: center; gap: 6px;
+            color: var(--text); font-size: 0.95em; cursor: pointer;
+            flex-direction: row; margin: 0 0 12px;
+        }
+        .modal input[type=text],
+        .modal input[type=password],
+        .modal input[type=number],
+        .modal select,
+        .modal textarea {
+            background: #14161a; color: var(--text);
+            border: 1px solid var(--border); border-radius: 4px;
+            padding: 8px; font-size: 0.95em; font-family: inherit;
+        }
+        .modal textarea {
+            font-family: Consolas, monospace;
+            font-size: 0.9em; resize: vertical;
+            min-height: 100px;
+        }
+        .modal input[type=text]:focus,
+        .modal input[type=password]:focus,
+        .modal input[type=number]:focus,
+        .modal select:focus,
+        .modal textarea:focus { outline: 1px solid #4da3ff; }
+        .modal input[readonly] {
+            background: #0a0b0e; color: var(--muted);
+            cursor: not-allowed;
+        }
+
+        .grid2 {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px;
+        }
+        .grid3 {
+            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px 20px;
+        }
+
+        /* камеры */
+        .cams-grid {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 6px 12px; padding: 10px 12px;
+            background: #14161a; border: 1px solid var(--border);
+            border-radius: 4px; max-height: 180px; overflow-y: auto;
+            margin-bottom: 6px;
+        }
+        .cams-grid label {
+            display: flex; flex-direction: row; align-items: center;
+            gap: 6px; color: var(--text); font-size: 0.9em;
+            cursor: pointer; margin: 0;
+        }
+        .cams-grid label input { accent-color: #2a6df4; }
+        .cams-grid .cam-name { color: var(--text); }
+        .cams-grid .cam-id {
+            color: var(--muted); font-size: 0.8em;
+            font-family: Consolas, monospace;
+        }
+        .cams-actions {
+            display: flex; gap: 8px; margin-bottom: 8px;
+        }
+        .hint {
+            color: var(--muted); font-size: 0.8em; margin: 4px 0 12px;
+        }
+
+        /* whitelist в модалке */
+        .wl-info {
+            color: var(--muted); font-size: 0.85em; margin-top: 4px;
+        }
+
+        /* кнопки модалки */
+        .modal-actions {
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 8px; margin-top: 20px;
+            padding-top: 16px; border-top: 1px solid var(--border);
+        }
+        .modal-actions .right { display: flex; gap: 8px; }
+
+        /* уведомления */
+        .toast {
+            position: fixed; top: 20px; right: 20px; z-index: 200;
+            padding: 12px 20px; border-radius: 6px;
+            font-size: 0.9em; max-width: 400px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            opacity: 0; transform: translateY(-20px);
+            transition: opacity 0.2s, transform 0.2s;
+            pointer-events: none;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.ok { background: #2c7a2c; color: #fff; }
+        .toast.err { background: var(--danger); color: #fff; }
+
+        /* журнал */
+        .log-card {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 16px 20px; margin-top: 24px;
+        }
+        .log-card h2 {
+            margin: 0 0 12px; font-size: 0.95em; color: #cfd6e0;
+            display: flex; align-items: center; gap: 10px;
+        }
+        pre.log {
+            background: #0a0b0e; color: #cfd6e0;
+            padding: 10px 12px; border-radius: 4px;
+            border: 1px solid var(--border);
+            font-family: Consolas, monospace; font-size: 0.8em;
+            max-height: 300px; overflow: auto;
+            white-space: pre-wrap; word-break: break-all;
+            margin: 0;
+        }
+
+        footer {
+            text-align: center; color: var(--muted);
+            font-size: 0.8em; padding: 24px;
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>VHS-Viewer · Реле</h1>
+    <nav>
+        <a href="{{ url_for('index') }}">Просмотр</a>
+        <a href="{{ url_for('events_page') }}">События</a>
+        <a href="{{ url_for('analytics_page') }}">Аналитика</a>
+        <a href="{{ url_for('relay_page') }}" class="active">Реле</a>
+        <a href="{{ url_for('messaging_page') }}">Уведомления</a>
+        <a href="{{ url_for('about_page') }}">О программе</a>
+    </nav>
+    <div class="user">
+        {% if user %}Вы: <b>{{ user.username }}</b> · <a href="{{ url_for('logout') }}" style="color:var(--muted)">выход</a>{% endif %}
+    </div>
+</header>
+
+<main>
+    <div class="top-bar">
+        <h2>Список реле</h2>
+        <div class="right">
+            <button class="btn primary" id="btn-add">+ Добавить реле</button>
+            <button class="btn secondary" id="btn-refresh">Обновить</button>
+        </div>
+    </div>
+
+    <div id="list-container">
+        <div class="empty">Загрузка…</div>
+    </div>
+
+    <div class="log-card">
+        <h2>Журнал срабатываний <button class="btn-sm secondary" id="log-refresh" style="margin-left:auto">Обновить</button></h2>
+        <pre class="log" id="log">—</pre>
+    </div>
+</main>
+
+<footer>{{ app_footer }} · v{{ version }}</footer>
+
+<!-- Модалка редактирования -->
+<div class="modal-overlay" id="modal">
+    <div class="modal">
+        <h2 id="modal-title">Новое реле</h2>
+
+        <h3>Основное</h3>
+        <div class="grid2">
+            <label>
+                ID (латиница, цифры, _ и -)
+                <input id="f-id" type="text" placeholder="gate_main" maxlength="50">
+            </label>
+            <label>
+                Имя (человеческое)
+                <input id="f-name" type="text" placeholder="Шлагбаум главный въезд">
+            </label>
+        </div>
+        <label class="check">
+            <input id="f-enabled" type="checkbox"> Реле включено
+        </label>
+
+        <h3>HTTP-настройки</h3>
+        <div class="grid2">
+            <label>
+                URL открытия *
+                <input id="f-url-open" type="text"
+                       placeholder="http://192.168.1.100/relay?on=1">
+            </label>
+            <label>
+                URL закрытия (опционально)
+                <input id="f-url-close" type="text"
+                       placeholder="http://192.168.1.100/relay?on=0">
+            </label>
+        </div>
+        <div class="grid3">
+            <label>
+                Метод
+                <select id="f-method">
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                </select>
+            </label>
+            <label>
+                Timeout (сек)
+                <input id="f-timeout" type="number" step="0.5" min="0.5" max="60" value="5">
+            </label>
+            <label>
+                Открыто (сек) — через сколько закрыть
+                <input id="f-open-duration" type="number" min="1" max="3600" value="5">
+            </label>
+        </div>
+        <div class="grid3">
+            <label>
+                Cooldown (сек)
+                <input id="f-cooldown" type="number" min="0" max="86400" value="30">
+            </label>
+            <label>
+                Basic Auth — логин
+                <input id="f-username" type="text" autocomplete="off">
+            </label>
+            <label>
+                Basic Auth — пароль
+                <input id="f-password" type="password" autocomplete="new-password"
+                       placeholder="оставьте пустым, чтобы не менять">
+            </label>
+        </div>
+
+        <h3>Камеры</h3>
+        <p class="hint">
+            Если ни одна камера не выбрана — реле реагирует на распознанные номера
+            с <b>любой</b> камеры. Если выбраны — только с этих.
+        </p>
+        <div class="cams-actions">
+            <button class="btn-sm secondary" type="button" id="cams-all">Выбрать все</button>
+            <button class="btn-sm secondary" type="button" id="cams-none">Очистить</button>
+        </div>
+        <div class="cams-grid" id="cams-grid">
+            <div class="hint" style="grid-column: 1 / -1">Загрузка списка камер…</div>
+        </div>
+
+        <h3>Белый список номеров</h3>
+        <label>
+            Номера (по одному на строку)
+            <textarea id="f-whitelist" placeholder="А798АР177&#10;В123ВС50"></textarea>
+        </label>
+        <div class="wl-info">
+            Нормализация: верхний регистр, пробелы и дефисы игнорируются.<br>
+            Пример: <code>А 798 АР 177</code> = <code>a798ap177</code>.
+        </div>
+
+        <div class="modal-actions">
+            <div>
+                <button class="btn danger" id="btn-delete" style="display:none">🗑 Удалить реле</button>
+            </div>
+            <div class="right">
+                <button class="btn secondary" id="btn-cancel">Отмена</button>
+                <button class="btn primary" id="btn-save">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Уведомления -->
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+    const $ = id => document.getElementById(id);
+    let currentRelays = [];
+    let cameraList = [];      // [{sid, name}]
+    let editingId = null;     // null = создание нового
+
+    function esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function toast(msg, kind) {
+        const el = $('toast');
+        el.textContent = msg;
+        el.className = 'toast ' + (kind || 'ok');
+        void el.offsetWidth;
+        el.classList.add('show');
+        setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    function streamIdFromUrl(url) {
+        if (!url) return '';
+        let clean = String(url).split('?')[0].split('#')[0];
+        clean = clean.replace(/\/+$/, '');
+        const parts = clean.split('/').filter(Boolean);
+        return parts.length ? parts[parts.length - 1] : '';
+    }
+
+    // ---------------- Камеры ----------------
+    async function loadCameras() {
+        try {
+            const r = await fetch('/api/config', { credentials: 'same-origin' });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const cfg = await r.json();
+            const streams = (cfg.streams || []).filter(s => s.enabled !== false);
+            cameraList = streams.map(s => ({
+                sid: streamIdFromUrl(s.url || ''),
+                name: s.name || streamIdFromUrl(s.url || ''),
+            })).filter(c => c.sid);
+        } catch (e) {
+            // fallback — только из журнала
+            try {
+                const r2 = await fetch('/api/events/cameras', { credentials: 'same-origin' });
+                const j2 = await r2.json();
+                cameraList = (j2.cameras || []).map(c => ({ sid: c.id, name: c.name }));
+            } catch (e2) {
+                cameraList = [];
+            }
+        }
+    }
+
+    function renderCamsGrid(selectedSids) {
+        const grid = $('cams-grid');
+        if (!cameraList.length) {
+            grid.innerHTML = '<div class="hint" style="grid-column: 1 / -1">Камеры не загружены (не admin или список пуст)</div>';
+            return;
+        }
+        const sel = new Set((selectedSids || []));
+        grid.innerHTML = cameraList.map(c =>
+            '<label>' +
+                '<input type="checkbox" class="cam-cb" value="' + esc(c.sid) + '"' +
+                (sel.has(c.sid) ? ' checked' : '') + '>' +
+                '<span class="cam-name">' + esc(c.name) + '</span>' +
+                '<span class="cam-id">' + esc(c.sid) + '</span>' +
+            '</label>'
+        ).join('');
+    }
+
+    // ---------------- Список реле ----------------
+    async function loadList() {
+        $('list-container').innerHTML = '<div class="empty">Загрузка…</div>';
+        try {
+            const r = await fetch('/api/relay/list', { credentials: 'same-origin' });
+            if (r.status === 401) { window.location.href = '/login'; return; }
+            if (r.status === 403) { $('list-container').innerHTML =
+                '<div class="empty">Только для администратора</div>'; return; }
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const j = await r.json();
+            currentRelays = j.relays || [];
+            renderList();
+        } catch (e) {
+            $('list-container').innerHTML =
+                '<div class="empty">Ошибка загрузки: ' + esc(e.message) + '</div>';
+        }
+    }
+
+    function renderList() {
+        const c = $('list-container');
+        if (!currentRelays.length) {
+            c.innerHTML =
+                '<div class="empty">Реле нет. Нажмите «+ Добавить реле», чтобы создать.</div>';
+            return;
+        }
+        c.innerHTML = currentRelays.map(r => {
+            const cams = (r.cameras || []);
+            const camsText = cams.length
+                ? cams.map(cid => {
+                    const cam = cameraList.find(x => x.sid === cid);
+                    return cam ? cam.name : cid;
+                  }).join(', ')
+                : 'все камеры';
+            const wlCount = (r.whitelist || []).length;
+            const disabled = !r.enabled ? ' disabled' : '';
+            const badge = r.enabled
+                ? '<span class="badge on">вкл</span>'
+                : '<span class="badge off">выкл</span>';
+            return (
+                '<div class="relay-card' + disabled + '" data-id="' + esc(r.id) + '">' +
+                    '<div class="head">' +
+                        '<span class="name">' + esc(r.name || r.id) + '</span>' +
+                        '<span class="rid">' + esc(r.id) + '</span>' +
+                        badge +
+                        '<div class="actions">' +
+                            '<button class="btn-sm primary" data-act="edit">✎ Редактировать</button>' +
+                            '<button class="btn-sm secondary" data-act="test">🔌 Тест</button>' +
+                            '<button class="btn-sm danger" data-act="delete">🗑</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="meta">' +
+                        '<span>URL: <span class="url url-open">' +
+                            esc(r.url_open || '—') + '</span></span>' +
+                        '<span>Закрытие: ' +
+                            (r.url_close
+                                ? '<span class="url">' + esc(r.url_close) + '</span>'
+                                : '<b>не задано</b>') + '</span>' +
+                        '<span>Номеров в списке: <b>' + wlCount + '</b></span>' +
+                        '<span>Камеры: <b>' + esc(camsText) + '</b></span>' +
+                        '<span>Cooldown: <b>' + (r.cooldown_sec != null ? r.cooldown_sec : 30) + 'с</b></span>' +
+                    '</div>' +
+                '</div>'
+            );
+        }).join('');
+
+        c.querySelectorAll('.relay-card').forEach(card => {
+            card.querySelectorAll('[data-act]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = card.dataset.id;
+                    const act = btn.dataset.act;
+                    if (act === 'edit') openModal(id);
+                    else if (act === 'test') testRelay(id);
+                    else if (act === 'delete') deleteRelay(id);
+                });
+            });
+        });
+    }
+
+    // ---------------- Модалка ----------------
+    async function openModal(relayId) {
+        editingId = relayId;
+        const isNew = relayId === null;
+
+        $('modal-title').textContent = isNew ? 'Новое реле' : 'Редактирование реле';
+
+        let r = {
+            id: '', name: '', enabled: false, url_open: '', url_close: '',
+            method: 'GET', timeout: 5, open_duration_sec: 5, cooldown_sec: 30,
+            username: '', cameras: [], whitelist: [],
+        };
+
+        if (!isNew) {
+            try {
+                const resp = await fetch('/api/relay/' + encodeURIComponent(relayId),
+                                          { credentials: 'same-origin' });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                r = await resp.json();
+            } catch (e) {
+                toast('Не удалось загрузить реле: ' + e.message, 'err');
+                return;
+            }
+        }
+
+        $('f-id').value = r.id || '';
+        $('f-id').readOnly = !isNew;
+        $('f-name').value = r.name || '';
+        $('f-enabled').checked = !!r.enabled;
+        $('f-url-open').value = r.url_open || '';
+        $('f-url-close').value = r.url_close || '';
+        $('f-method').value = (r.method || 'GET').toUpperCase();
+        $('f-timeout').value = r.timeout != null ? r.timeout : 5;
+        $('f-open-duration').value = r.open_duration_sec != null ? r.open_duration_sec : 5;
+        $('f-cooldown').value = r.cooldown_sec != null ? r.cooldown_sec : 30;
+        $('f-username').value = r.username || '';
+        $('f-password').value = '';
+
+        // камеры
+        if (!cameraList.length) await loadCameras();
+        renderCamsGrid(r.cameras || []);
+
+        // whitelist
+        $('f-whitelist').value = (r.whitelist || []).join('\n');
+
+        $('btn-delete').style.display = isNew ? 'none' : 'inline-block';
+        $('modal').classList.add('active');
+    }
+
+    function closeModal() {
+        $('modal').classList.remove('active');
+        editingId = null;
+    }
+
+    async function saveRelay() {
+        const id = $('f-id').value.trim();
+        if (!id) { toast('ID обязателен', 'err'); return; }
+        if (!/^[a-zA-Z0-9_\-]{1,50}$/.test(id)) {
+            toast('ID: только латиница, цифры, _ и - (до 50)', 'err'); return;
+        }
+
+        const body = {
+            id: id,
+            name: $('f-name').value.trim() || id,
+            enabled: $('f-enabled').checked,
+            url_open: $('f-url-open').value.trim(),
+            url_close: $('f-url-close').value.trim(),
+            method: $('f-method').value,
+            timeout: parseFloat($('f-timeout').value) || 5,
+            open_duration_sec: parseInt($('f-open-duration').value, 10) || 5,
+            cooldown_sec: parseInt($('f-cooldown').value, 10) || 0,
+            username: $('f-username').value.trim(),
+            cameras: Array.from(document.querySelectorAll('#cams-grid .cam-cb:checked'))
+                        .map(cb => cb.value),
+            whitelist: $('f-whitelist').value.split('\n')
+                        .map(s => s.trim()).filter(Boolean),
+        };
+        const pwd = $('f-password').value;
+        if (pwd) body.password = pwd;
+
+        if (body.enabled && !body.url_open) {
+            toast('Если реле включено — URL открытия обязателен', 'err'); return;
+        }
+
+        try {
+            const r = await fetch('/api/relay/' + encodeURIComponent(id), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(body),
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+            closeModal();
+            toast('Сохранено', 'ok');
+            await loadList();
+        } catch (e) {
+            toast('Ошибка: ' + e.message, 'err');
+        }
+    }
+
+    async function deleteRelay(id) {
+        if (!confirm('Удалить реле "' + id + '"?\n\nНастройки будут удалены из конфига.')) {
+            return;
+        }
+        try {
+            const r = await fetch('/api/relay/' + encodeURIComponent(id), {
+                method: 'DELETE',
+                credentials: 'same-origin',
+            });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+            toast('Удалено', 'ok');
+            await loadList();
+        } catch (e) {
+            toast('Ошибка: ' + e.message, 'err');
+        }
+    }
+
+    async function testRelay(id) {
+        toast('Отправляю тестовый запрос…', 'ok');
+        try {
+            const r = await fetch('/api/relay/' + encodeURIComponent(id) + '/test', {
+                method: 'POST',
+                credentials: 'same-origin',
+            });
+            const j = await r.json();
+            if (j.ok) toast('✓ Реле ответило OK', 'ok');
+            else toast('✗ ' + (j.error || 'ошибка'), 'err');
+        } catch (e) {
+            toast('✗ ' + e.message, 'err');
+        }
+    }
+
+    // ---------------- Журнал ----------------
+    async function loadLog() {
+        try {
+            const r = await fetch('/api/relay/log?limit=100',
+                                  { credentials: 'same-origin' });
+            if (!r.ok) return;
+            const j = await r.json();
+            const lines = j.lines || [];
+            $('log').textContent = lines.length
+                ? lines.join('\n')
+                : '— пусто (ещё не было срабатываний) —';
+        } catch (e) {
+            $('log').textContent = 'Ошибка загрузки: ' + e.message;
+        }
+    }
+
+    // ---------------- Обработчики ----------------
+    $('btn-add').addEventListener('click', () => openModal(null));
+    $('btn-refresh').addEventListener('click', loadList);
+    $('btn-cancel').addEventListener('click', closeModal);
+    $('btn-save').addEventListener('click', saveRelay);
+    $('btn-delete').addEventListener('click', () => {
+        if (editingId) {
+            const id = editingId;
+            closeModal();
+            deleteRelay(id);
+        }
+    });
+
+    $('cams-all').addEventListener('click', () => {
+        document.querySelectorAll('#cams-grid .cam-cb').forEach(cb => cb.checked = true);
+    });
+    $('cams-none').addEventListener('click', () => {
+        document.querySelectorAll('#cams-grid .cam-cb').forEach(cb => cb.checked = false);
+    });
+
+    $('log-refresh').addEventListener('click', loadLog);
+
+    $('modal').addEventListener('click', (ev) => {
+        if (ev.target === $('modal')) closeModal();
+    });
+
+    // ---------------- Инициализация ----------------
+    (async () => {
+        await loadCameras();
+        await loadList();
+        await loadLog();
+        setInterval(loadLog, 10000);  // журнал сам обновляется раз в 10 сек
+    })();
+})();
+</script>
+</body>
+</html>
