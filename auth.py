@@ -6,12 +6,19 @@
     * сессия — cookie, время жизни — из конфига;
     * если security.auth_enabled: false — авторизация отключена.
 """
+
 import logging
 from datetime import timedelta
 from functools import wraps
 
 from flask import (
-    session, request, redirect, url_for, current_app, jsonify, g,
+    current_app,
+    g,
+    jsonify,
+    redirect,
+    request,
+    session,
+    url_for,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,23 +61,25 @@ def login_required(f):
         user = _current_user()
         if user is None:
             accept = request.headers.get("Accept", "")
-            if (request.path.startswith("/api/")
-                    or "application/json" in accept):
+            if request.path.startswith("/api/") or "application/json" in accept:
                 return jsonify({"error": "unauthorized"}), 401
             return redirect(url_for("login", next=request.path))
         g.user = user
         return f(*args, **kwargs)
+
     return wrapper
 
 
 def admin_required(f):
     """Пускает только пользователей с ролью 'admin'."""
+
     @wraps(f)
     @login_required
     def wrapper(*args, **kwargs):
         if getattr(g, "user", {}).get("role") != "admin":
             return jsonify({"error": "forbidden"}), 403
         return f(*args, **kwargs)
+
     return wrapper
 
 

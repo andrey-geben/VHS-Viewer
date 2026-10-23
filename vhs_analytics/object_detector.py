@@ -1,26 +1,43 @@
 """
 Multi-class детектор на YOLOv8 (ultralytics, COCO-80).
 
-Классы COCO: person, car, truck, bus, motorcycle, bicycle,
-bear, dog, cat, horse, cow, sheep, bird, elephant и др.
+Возвращает события с двумя полями:
+    label    — английское имя класса из COCO ("dog", "bear", ...)
+    label_ru — русское название для UI ("собака", "медведь", ...)
 
-imgsz теперь параметр detect(): одна модель, разные разрешения для разных
-камер. Меньше imgsz — быстрее инференс, но хуже точность на мелких объектах.
-640 — по умолчанию, 416 — компромисс для 1440p, 320 — быстро для дальних планов.
+Использование:
+    det = ObjectDetector(model_name="yolov8n.pt", conf_threshold=0.4)
+    det._ensure_loaded()
+    results = det.detect(frame, classes=["person", "dog", "bear"])
+    # → [{"category": "animal", "label": "dog", "label_ru": "собака",
+    #     "bbox": (x,y,w,h), "confidence": 0.87}, ...]
 """
 
 import logging
 import threading
 
+from .labels_ru import label_ru
+
 log = logging.getLogger(__name__)
+
 
 NAME_TO_CATEGORY = {
     "person": "person",
-    "bicycle": "vehicle", "car": "vehicle", "motorcycle": "vehicle",
-    "bus": "vehicle", "truck": "vehicle", "train": "vehicle",
-    "bird": "animal", "cat": "animal", "dog": "animal",
-    "horse": "animal", "sheep": "animal", "cow": "animal",
-    "elephant": "animal", "bear": "animal", "zebra": "animal",
+    "bicycle": "vehicle",
+    "car": "vehicle",
+    "motorcycle": "vehicle",
+    "bus": "vehicle",
+    "truck": "vehicle",
+    "train": "vehicle",
+    "bird": "animal",
+    "cat": "animal",
+    "dog": "animal",
+    "horse": "animal",
+    "sheep": "animal",
+    "cow": "animal",
+    "elephant": "animal",
+    "bear": "animal",
+    "zebra": "animal",
     "giraffe": "animal",
 }
 
@@ -57,11 +74,10 @@ class ObjectDetector:
         log.info(f"Загружаю YOLO-модель {self.model_name}...")
         try:
             from ultralytics import YOLO
+
             self._model = YOLO(self.model_name)
             self._available = True
-            log.info(
-                f"YOLO {self.model_name} готова, классов: {len(self._model.names)}"
-            )
+            log.info(f"YOLO {self.model_name} готова, классов: {len(self._model.names)}")
         except Exception:
             log.exception("не удалось загрузить YOLO-модель")
 
@@ -76,11 +92,12 @@ class ObjectDetector:
         imgsz: int = None,
     ) -> list[dict]:
         """
-        Возвращает:
-        [{"category": "person", "label": "person",
+        Возвращает список:
+        [{"category": "animal", "label": "dog", "label_ru": "собака",
           "bbox": (x, y, w, h), "confidence": 0.92}, ...]
 
-        imgsz: переопределяет default_imgsz для этого вызова.
+        classes: список английских имён классов (dog, bear, person, ...).
+        imgsz:   переопределяет default_imgsz для этого вызова.
         """
         self._ensure_loaded()
         if not self._available or self._model is None:
@@ -112,10 +129,13 @@ class ObjectDetector:
                     continue
                 conf = float(box.conf[0])
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
-                out.append({
-                    "category": NAME_TO_CATEGORY.get(cls_name, "object"),
-                    "label": cls_name,
-                    "bbox": (int(x1), int(y1), int(x2 - x1), int(y2 - y1)),
-                    "confidence": round(conf, 3),
-                })
+                out.append(
+                    {
+                        "category": NAME_TO_CATEGORY.get(cls_name, "object"),
+                        "label": cls_name,
+                        "label_ru": label_ru(cls_name),
+                        "bbox": (int(x1), int(y1), int(x2 - x1), int(y2 - y1)),
+                        "confidence": round(conf, 3),
+                    }
+                )
         return out

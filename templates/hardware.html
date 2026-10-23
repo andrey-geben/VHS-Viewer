@@ -1,10 +1,375 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
+    <meta charset="utf-8">
+    <title>Железо — VHS-Viewer</title>
+    <style>
+        :root {
+            --bg: #14161a; --panel: #1e2126; --border: #2a2f37;
+            --text: #e8e8e8; --muted: #8b96a5; --accent: #4da3ff;
+            --ok: #4caf50; --warn: #f0ad4e; --danger: #e05252;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: Arial, sans-serif;
+            background: var(--bg); color: var(--text);
+        }
+        header {
+            display: flex; align-items: center; gap: 16px;
+            padding: 12px 20px; background: var(--panel);
+            border-bottom: 1px solid var(--border);
+        }
+        header h1 { font-size: 1.1em; margin: 0; color: var(--accent); }
+        header nav { display: flex; gap: 14px; margin-left: 20px; }
+        header nav a {
+            color: var(--text); text-decoration: none;
+            padding: 6px 10px; border-radius: 6px; font-size: 0.92em;
+        }
+        header nav a:hover { background: #2a2f37; }
+        header nav a.active { background: #2a6df4; color: #fff; }
+        header .user { margin-left: auto; color: var(--muted); font-size: 0.9em; }
+        header .user b { color: var(--text); }
+
+        main { padding: 24px; max-width: 900px; margin: 0 auto; }
+
+        .card {
+            background: var(--panel); border: 1px solid var(--border);
+            border-radius: 8px; padding: 20px 24px; margin-bottom: 16px;
+        }
+        .card h2 {
+            margin: 0 0 14px; font-size: 1em; color: #cfd6e0;
+            border-bottom: 1px solid var(--border); padding-bottom: 10px;
+        }
+        .card p.hint {
+            margin: 0 0 14px; color: var(--muted); font-size: 0.85em;
+            line-height: 1.6;
+        }
+        .card code {
+            background: #0a0b0e; padding: 1px 6px; border-radius: 3px;
+            font-family: Consolas, monospace; font-size: 0.9em;
+            color: #6cb2ff;
+        }
+        .row {
+            display: flex; align-items: baseline; gap: 10px;
+            padding: 6px 0; font-size: 0.92em;
+            border-bottom: 1px solid #232830;
+        }
+        .row:last-child { border-bottom: none; }
+        .row .k { color: var(--muted); min-width: 240px; }
+        .row .v { color: var(--text); font-family: Consolas, monospace; }
+
+        .badge {
+            display: inline-block; padding: 2px 10px;
+            border-radius: 10px; font-size: 0.8em; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.03em;
+        }
+        .badge.ok  { background: rgba(76,175,80,0.2); color: #57d87a; }
+        .badge.warn { background: rgba(240,173,78,0.2); color: #f0ad4e; }
+        .badge.err { background: rgba(224,82,82,0.2); color: #f16a6a; }
+        .badge.grey { background: #2a2f37; color: #8b96a5; }
+
+        .warnings { margin-top: 12px; }
+        .warning {
+            background: rgba(224,82,82,0.1); border-left: 3px solid var(--danger);
+            padding: 10px 14px; margin-bottom: 8px;
+            font-size: 0.9em; border-radius: 3px;
+            color: #ffd0d0; line-height: 1.5;
+        }
+
+        .advice {
+            background: #0a0b0e; padding: 14px 16px;
+            border: 1px solid var(--border); border-radius: 4px;
+            font-family: Consolas, monospace; font-size: 0.85em;
+            white-space: pre-wrap; color: #cfd6e0;
+            line-height: 1.7;
+        }
+
+        .actions {
+            display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+            margin-top: 16px;
+        }
+        .btn {
+            padding: 8px 16px; border: none; border-radius: 4px;
+            cursor: pointer; font-size: 0.92em;
+        }
+        .btn.primary { background: #2a6df4; color: #fff; }
+        .btn.secondary { background: #3a4150; color: #fff; }
+        .btn:hover { opacity: 0.9; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .status { color: var(--muted); font-size: 0.85em; }
+        .status.ok { color: #57d87a; }
+        .status.err { color: var(--danger); }
+
+        .reconnect {
+            color: var(--muted); font-size: 0.8em; font-style: italic;
+            margin-top: 10px;
+        }
+
+        .loading {
+            color: var(--muted); font-size: 0.9em;
+            padding: 20px; text-align: center;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px; height: 14px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        footer {
+            text-align: center; color: var(--muted);
+            font-size: 0.8em; padding: 24px;
+        }
+    </style>
 </head>
 <body>
-$END$
+<header>
+    <h1>VHS-Viewer · Железо</h1>
+    <nav>
+        <a href="{{ url_for('index') }}">Просмотр</a>
+        <a href="{{ url_for('events_page') }}">События</a>
+        <a href="{{ url_for('analytics_page') }}">Аналитика</a>
+        {% if user and user.role == 'admin' %}
+        <a href="{{ url_for('relay_page') }}">Реле</a>
+        <a href="{{ url_for('messaging_page') }}">Уведомления</a>
+        <a href="{{ url_for('hardware_page') }}" class="active">Железо</a>
+        {% endif %}
+        <a href="{{ url_for('about_page') }}">О программе</a>
+    </nav>
+    <div class="user">
+        {% if user %}Вы: <b>{{ user.username }}</b> · <a href="{{ url_for('logout') }}" style="color:var(--muted)">выход</a>{% endif %}
+    </div>
+</header>
+
+<main>
+    <div class="card">
+        <h2>Профиль системы</h2>
+        <div id="hw-rows">
+            <div class="loading"><span class="spinner"></span>Определяю железо…</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Рекомендации для этого железа</h2>
+        <div id="advice" class="advice">—</div>
+        <div id="warnings" class="warnings"></div>
+    </div>
+
+    <div class="card">
+        <h2>Режим auto_tune</h2>
+        <p class="hint">
+            Когда включён — при старте <code>viewer.py</code> параметры
+            <code>objects_per_camera</code>, <code>analyze_every_n</code>,
+            <code>object_imgsz</code>, <code>intra_op_num_threads</code>
+            автоматически подстраиваются под это железо. Per-camera
+            настройки в YAML при этом не затрагиваются.<br>
+            Если хотите управлять параметрами вручную — выключите
+            auto_tune и задайте значения в <code>viewer_config.yaml</code>.
+        </p>
+        <div class="row">
+            <span class="k">Текущее состояние:</span>
+            <span class="v" id="auto-tune-state">—</span>
+        </div>
+        <div class="row">
+            <span class="k">Активные значения (из YAML):</span>
+            <span class="v" id="current-values">—</span>
+        </div>
+        <div class="actions">
+            <button class="btn primary" id="btn-toggle" disabled>Загрузка…</button>
+            <span class="status" id="toggle-status"></span>
+        </div>
+        <div class="reconnect">Изменение применится после перезапуска <code>viewer.py</code>.</div>
+    </div>
+
+    <div class="card">
+        <h2>Как это работает</h2>
+        <p class="hint" style="margin-bottom:0">
+            <b>auto_tune</b> анализирует количество физических ядер, объём RAM,
+            текущую частоту CPU и предупреждает о троттлинге / работе от батареи.
+            <br><br>
+            На <b>мощном сервере</b> (8+ ядер, 16+ GB RAM) — включит полный
+            режим: <code>objects_per_camera: true</code>,
+            <code>analyze_every_n: 1</code>, <code>object_imgsz: 640</code>,
+            <code>intra_op_num_threads: 8</code>.
+            <br><br>
+            На <b>ноутбуке / слабом CPU</b> (2–4 ядра) — консервативный режим:
+            <code>objects_per_camera: false</code>,
+            <code>analyze_every_n: 2</code>, <code>object_imgsz: 416</code>,
+            <code>intra_op_num_threads: 3</code>.
+            <br><br>
+            Проверить рекомендации без запуска аналитики:
+            <code>python -m vhs_analytics.hardware</code>.
+            С бенчмарком: <code>python -m vhs_analytics.hardware --benchmark</code>.
+        </p>
+    </div>
+</main>
+
+<footer>{{ app_footer }} · v{{ version }}</footer>
+
+<script>
+(function () {
+    const $ = id => document.getElementById(id);
+
+    function esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function renderRow(k, v) {
+        return '<div class="row"><span class="k">' + esc(k) + '</span>' +
+               '<span class="v">' + v + '</span></div>';
+    }
+
+    function load() {
+        fetch('/api/hardware', { credentials: 'same-origin' })
+            .then(r => {
+                if (r.status === 401) {
+                    window.location.href = '/login';
+                    throw new Error('auth');
+                }
+                if (r.status === 403) {
+                    throw new Error('Только для администратора');
+                }
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(hw => renderProfile(hw))
+            .catch(e => {
+                if (e.message === 'auth') return;
+                $('hw-rows').innerHTML =
+                    '<div class="status err">Ошибка: ' + esc(e.message) + '</div>';
+            });
+    }
+
+    function renderProfile(hw) {
+        const rows = [];
+
+        rows.push(renderRow('CPU (физических ядер)', esc(hw.physical_cores)));
+        rows.push(renderRow('CPU (логических ядер)', esc(hw.logical_cores)));
+        rows.push(renderRow('RAM всего', esc(hw.ram_total_gb) + ' GB'));
+        rows.push(renderRow('RAM свободно', esc(hw.ram_available_gb) + ' GB'));
+
+        if (hw.cpu_freq_current_mhz && hw.cpu_freq_max_mhz) {
+            const cur = hw.cpu_freq_current_mhz;
+            const mx = hw.cpu_freq_max_mhz;
+            const pct = Math.round(100 * cur / mx);
+            let cls = 'ok';
+            let label = '';
+            if (hw.is_throttling) {
+                cls = 'err';
+                label = ' троттлинг';
+            } else if (pct < 90) {
+                cls = 'warn';
+            }
+            rows.push(renderRow(
+                'Частота CPU',
+                esc(cur) + ' / ' + esc(mx) + ' MHz ' +
+                '<span class="badge ' + cls + '">' + pct + '%' + label + '</span>'
+            ));
+        } else {
+            rows.push(renderRow(
+                'Частота CPU',
+                '<span class="badge grey">не определяется</span>'
+            ));
+        }
+
+        rows.push(renderRow('ОС', esc(hw.os_name)));
+
+        rows.push(renderRow(
+            'NVIDIA GPU (CUDA)',
+            hw.has_cuda
+                ? '<span class="badge ok">есть</span>'
+                : '<span class="badge grey">нет</span>'
+        ));
+
+        if (hw.is_on_battery) {
+            rows.push(renderRow(
+                'Питание',
+                '<span class="badge warn">батарея</span> — CPU ограничен'
+            ));
+        } else {
+            rows.push(renderRow(
+                'Питание',
+                '<span class="badge ok">сеть</span>'
+            ));
+        }
+
+        const rec = hw.recommend || {};
+        rows.push(renderRow('→ intra_op_num_threads', esc(rec.intra_op_num_threads)));
+        rows.push(renderRow('→ objects_per_camera', esc(rec.objects_per_camera)));
+        rows.push(renderRow('→ analyze_every_n', esc(rec.analyze_every_n)));
+        rows.push(renderRow('→ object_imgsz', esc(rec.object_imgsz)));
+
+        $('hw-rows').innerHTML = rows.join('');
+
+        $('advice').textContent = hw.advice || '—';
+
+        const wl = hw.warnings || [];
+        if (!wl.length) {
+            $('warnings').innerHTML =
+                '<div class="muted" style="margin-top:8px">' +
+                'Предупреждений нет — железо в порядке.</div>';
+        } else {
+            $('warnings').innerHTML = wl.map(w =>
+                '<div class="warning">' + esc(w) + '</div>'
+            ).join('');
+        }
+
+        const on = hw.auto_tune === true;
+        $('auto-tune-state').innerHTML = on
+            ? '<span class="badge ok">включён</span>'
+            : '<span class="badge grey">выключен</span>';
+
+        const parts = [];
+        if (hw.intra_op_num_threads != null) parts.push('intra_op=' + hw.intra_op_num_threads);
+        if (hw.analyze_every_n != null) parts.push('every=' + hw.analyze_every_n);
+        if (hw.object_imgsz != null) parts.push('imgsz=' + hw.object_imgsz);
+        if (hw.objects_per_camera != null) parts.push('per_camera=' + hw.objects_per_camera);
+        $('current-values').textContent = parts.length ? parts.join(', ') : '—';
+
+        const btn = $('btn-toggle');
+        btn.disabled = false;
+        btn.textContent = on ? 'Выключить auto_tune' : 'Включить auto_tune';
+        btn.dataset.enabled = String(!on);
+    }
+
+    $('btn-toggle').addEventListener('click', () => {
+        const btn = $('btn-toggle');
+        const enabled = btn.dataset.enabled === 'true';
+        const st = $('toggle-status');
+        st.className = 'status';
+        st.textContent = 'применяю…';
+        btn.disabled = true;
+
+        fetch('/api/hardware/auto_tune', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ enabled }),
+        })
+        .then(r => r.json())
+        .then(j => {
+            if (!j.ok) throw new Error(j.error || 'error');
+            st.className = 'status ok';
+            st.textContent = '✓ сохранено. Перезапустите viewer.py';
+            load();
+        })
+        .catch(e => {
+            st.className = 'status err';
+            st.textContent = '✗ ' + e.message;
+            btn.disabled = false;
+        });
+    });
+
+    load();
+})();
+</script>
 </body>
 </html>

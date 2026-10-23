@@ -87,7 +87,7 @@ class RelayInstance:
         self.cameras = set(str(c).strip() for c in cams if str(c).strip())
 
         wl = set()
-        for p in (cfg.get("whitelist") or []):
+        for p in cfg.get("whitelist") or []:
             n = normalize_plate(p)
             if n:
                 wl.add(n)
@@ -119,29 +119,32 @@ class RelayInstance:
 
         ok, err = self._trigger(self.url_open)
         if ok:
-            self._log_write(self.id, self.name, plate_norm, camera_id,
-                            camera_name, "open", f"url_open: {self.url_open}")
-            log.info(
-                f"Relay[{self.id}]: открыто для {plate_norm} "
-                f"(камера: {camera_name})"
+            self._log_write(
+                self.id,
+                self.name,
+                plate_norm,
+                camera_id,
+                camera_name,
+                "open",
+                f"url_open: {self.url_open}",
             )
+            log.info(f"Relay[{self.id}]: открыто для {plate_norm} (камера: {camera_name})")
             if self.url_close:
                 self._schedule_close(plate_norm, self.url_close)
             return True
 
-        self._log_write(self.id, self.name, plate_norm, camera_id,
-                        camera_name, "error", f"url_open: {err}")
+        self._log_write(
+            self.id, self.name, plate_norm, camera_id, camera_name, "error", f"url_open: {err}"
+        )
         log.error(f"Relay[{self.id}]: ошибка для {plate_norm}: {err}")
         return False
 
     def _trigger(self, url: str) -> tuple[bool, str | None]:
         try:
             if self.method == "POST":
-                r = requests.post(url, headers=self.headers,
-                                  auth=self.auth, timeout=self.timeout)
+                r = requests.post(url, headers=self.headers, auth=self.auth, timeout=self.timeout)
             else:
-                r = requests.get(url, headers=self.headers,
-                                 auth=self.auth, timeout=self.timeout)
+                r = requests.get(url, headers=self.headers, auth=self.auth, timeout=self.timeout)
             if 200 <= r.status_code < 400:
                 return True, None
             return False, f"HTTP {r.status_code}"
@@ -159,15 +162,11 @@ class RelayInstance:
         def _do_close():
             ok, err = self._trigger(url)
             if ok:
-                self._log_write(self.id, self.name, plate, "", "",
-                                "close", f"url_close: {url}")
+                self._log_write(self.id, self.name, plate, "", "", "close", f"url_close: {url}")
                 log.info(f"Relay[{self.id}]: закрыто для {plate}")
             else:
-                self._log_write(self.id, self.name, plate, "", "",
-                                "error", f"url_close: {err}")
-                log.warning(
-                    f"Relay[{self.id}]: не удалось закрыть {plate}: {err}"
-                )
+                self._log_write(self.id, self.name, plate, "", "", "error", f"url_close: {err}")
+                log.warning(f"Relay[{self.id}]: не удалось закрыть {plate}: {err}")
 
         t = threading.Timer(self.open_duration_sec, _do_close)
         t.daemon = True
@@ -212,9 +211,7 @@ class RelayManager:
                 old["name"] = old.get("name") or "Реле по умолчанию"
                 old["cameras"] = []
                 relays_raw = [old]
-                log.info(
-                    "relay: плоский формат сконвертирован в одно реле 'default'"
-                )
+                log.info("relay: плоский формат сконвертирован в одно реле 'default'")
             else:
                 relays_raw = []
 
@@ -235,9 +232,7 @@ class RelayManager:
 
         self.relays = new_relays
         enabled_count = sum(1 for r in self.relays.values() if r.enabled)
-        log.info(
-            f"RelayManager: реле={len(self.relays)}, включено={enabled_count}"
-        )
+        log.info(f"RelayManager: реле={len(self.relays)}, включено={enabled_count}")
 
     def reload_from_cfg(self, cfg: dict):
         with self._lock:
@@ -263,15 +258,21 @@ class RelayManager:
             return {"ok": False, "error": f"реле '{relay_id}' не найдено"}
         return r.test()
 
-    def _log_write(self, relay_id: str, relay_name: str, plate: str,
-                   camera_id: str, camera_name: str,
-                   action: str, details: str):
+    def _log_write(
+        self,
+        relay_id: str,
+        relay_name: str,
+        plate: str,
+        camera_id: str,
+        camera_name: str,
+        action: str,
+        details: str,
+    ):
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         line = f"{ts}\t{relay_id}\t{plate}\t{camera_id}\t{action}\t{details}\n"
         try:
-            with self._write_lock:
-                with open(self.log_path, "a", encoding="utf-8") as f:
-                    f.write(line)
+            with self._write_lock, open(self.log_path, "a", encoding="utf-8") as f:
+                f.write(line)
         except Exception:
             log.exception("relay: не удалось записать в relay.log")
 

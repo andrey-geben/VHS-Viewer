@@ -139,11 +139,13 @@ class StreamWorker(threading.Thread):
         obj = self.detectors.get("object")
         if obj is not None:
             try:
-                out.extend(obj.detect(
-                    frame,
-                    classes=self.object_classes,
-                    imgsz=self.object_imgsz,
-                ))
+                out.extend(
+                    obj.detect(
+                        frame,
+                        classes=self.object_classes,
+                        imgsz=self.object_imgsz,
+                    )
+                )
             except Exception:
                 log.exception(f"[{self.stream['id']}] object error")
 
@@ -203,12 +205,16 @@ class StreamWorker(threading.Thread):
     def run(self):
         slot = _FrameSlot()
         reader = threading.Thread(
-            target=self._reader_loop, args=(slot,),
-            daemon=True, name=f"reader-{self.stream['id']}",
+            target=self._reader_loop,
+            args=(slot,),
+            daemon=True,
+            name=f"reader-{self.stream['id']}",
         )
         analyzer = threading.Thread(
-            target=self._analyzer_loop, args=(slot,),
-            daemon=True, name=f"analyzer-{self.stream['id']}",
+            target=self._analyzer_loop,
+            args=(slot,),
+            daemon=True,
+            name=f"analyzer-{self.stream['id']}",
         )
         reader.start()
         analyzer.start()

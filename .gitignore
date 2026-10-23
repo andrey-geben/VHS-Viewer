@@ -31,3 +31,13 @@ yolov8n_openvino_model/
 .vscode/
 *.swp
 .DS_Store
+
+# Бэкапы и временные файлы
+*.bak
+*.bak.*
+local_files.txt
+remote_files.txt
+
+# Сборки
+VHS-Viewer-*.zip
+*.zip

@@ -1,6 +1,7 @@
 """Клиент публичного API VHS-Streamer. Получает список потоков + RTSP-адреса."""
 
 import logging
+
 import requests
 
 log = logging.getLogger(__name__)
@@ -92,12 +93,14 @@ class StreamerClient:
                 if webrtc_url is None and isinstance(webrtc_list[0], dict):
                     webrtc_url = webrtc_list[0].get("url")
 
-            streams.append({
-                "id": stream_id,
-                "name": display_name,
-                "webrtc_url": webrtc_url,
-                "rtsp_url": rtsp_url,
-            })
+            streams.append(
+                {
+                    "id": stream_id,
+                    "name": display_name,
+                    "webrtc_url": webrtc_url,
+                    "rtsp_url": rtsp_url,
+                }
+            )
 
         log.info(f"получено потоков: {len(streams)} (rtsp_port={rtsp_port})")
         return streams

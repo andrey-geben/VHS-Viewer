@@ -14,21 +14,6 @@
             margin: 0; font-family: Arial, sans-serif;
             background: var(--bg); color: var(--text);
         }
-        header {
-            display: flex; align-items: center; gap: 16px;
-            padding: 12px 20px; background: var(--panel);
-            border-bottom: 1px solid var(--border);
-        }
-        header h1 { font-size: 1.1em; margin: 0; color: var(--accent); }
-        header nav { display: flex; gap: 14px; margin-left: 20px; }
-        header nav a {
-            color: var(--text); text-decoration: none;
-            padding: 6px 10px; border-radius: 6px; font-size: 0.92em;
-        }
-        header nav a:hover { background: #2a2f37; }
-        header nav a.active { background: #2a6df4; color: #fff; }
-        header .user { margin-left: auto; color: var(--muted); font-size: 0.9em; }
-        header .user b { color: var(--text); }
 
         main { padding: 20px; max-width: 1200px; margin: 0 auto; }
 
@@ -56,7 +41,6 @@
         .btn-sm.danger { background: var(--danger); color: #fff; }
         .btn-sm:hover { opacity: 0.9; }
 
-        /* карточки реле */
         .relay-card {
             background: var(--panel); border: 1px solid var(--border);
             border-radius: 8px; padding: 14px 18px; margin-bottom: 12px;
@@ -97,14 +81,13 @@
         }
         .relay-card .meta .url.url-open { color: #6cb2ff; }
 
-        /* пустой список */
         .empty {
             background: var(--panel); border: 1px solid var(--border);
             border-radius: 8px; padding: 40px;
             text-align: center; color: var(--muted);
         }
 
-        /* модалка */
+        /* Модалка */
         .modal-overlay {
             display: none; position: fixed; inset: 0;
             background: rgba(0,0,0,0.75); z-index: 100;
@@ -190,12 +173,10 @@
             color: var(--muted); font-size: 0.8em; margin: 4px 0 12px;
         }
 
-        /* whitelist в модалке */
         .wl-info {
             color: var(--muted); font-size: 0.85em; margin-top: 4px;
         }
 
-        /* кнопки модалки */
         .modal-actions {
             display: flex; justify-content: space-between; align-items: center;
             gap: 8px; margin-top: 20px;
@@ -203,7 +184,6 @@
         }
         .modal-actions .right { display: flex; gap: 8px; }
 
-        /* уведомления */
         .toast {
             position: fixed; top: 20px; right: 20px; z-index: 200;
             padding: 12px 20px; border-radius: 6px;
@@ -217,7 +197,6 @@
         .toast.ok { background: #2c7a2c; color: #fff; }
         .toast.err { background: var(--danger); color: #fff; }
 
-        /* журнал */
         .log-card {
             background: var(--panel); border: 1px solid var(--border);
             border-radius: 8px; padding: 16px 20px; margin-top: 24px;
@@ -243,20 +222,8 @@
     </style>
 </head>
 <body>
-<header>
-    <h1>VHS-Viewer · Реле</h1>
-    <nav>
-        <a href="{{ url_for('index') }}">Просмотр</a>
-        <a href="{{ url_for('events_page') }}">События</a>
-        <a href="{{ url_for('analytics_page') }}">Аналитика</a>
-        <a href="{{ url_for('relay_page') }}" class="active">Реле</a>
-        <a href="{{ url_for('messaging_page') }}">Уведомления</a>
-        <a href="{{ url_for('about_page') }}">О программе</a>
-    </nav>
-    <div class="user">
-        {% if user %}Вы: <b>{{ user.username }}</b> · <a href="{{ url_for('logout') }}" style="color:var(--muted)">выход</a>{% endif %}
-    </div>
-</header>
+
+{% include '_nav.html' %}
 
 <main>
     <div class="top-bar">
@@ -279,7 +246,6 @@
 
 <footer>{{ app_footer }} · v{{ version }}</footer>
 
-<!-- Модалка редактирования -->
 <div class="modal-overlay" id="modal">
     <div class="modal">
         <h2 id="modal-title">Новое реле</h2>
@@ -380,15 +346,13 @@
     </div>
 </div>
 
-<!-- Уведомления -->
 <div class="toast" id="toast"></div>
-
 <script>
 (function () {
     const $ = id => document.getElementById(id);
     let currentRelays = [];
-    let cameraList = [];      // [{sid, name}]
-    let editingId = null;     // null = создание нового
+    let cameraList = [];
+    let editingId = null;
 
     function esc(s) {
         return String(s == null ? '' : s)
@@ -425,7 +389,6 @@
                 name: s.name || streamIdFromUrl(s.url || ''),
             })).filter(c => c.sid);
         } catch (e) {
-            // fallback — только из журнала
             try {
                 const r2 = await fetch('/api/events/cameras', { credentials: 'same-origin' });
                 const j2 = await r2.json();
@@ -569,11 +532,9 @@
         $('f-username').value = r.username || '';
         $('f-password').value = '';
 
-        // камеры
         if (!cameraList.length) await loadCameras();
         renderCamsGrid(r.cameras || []);
 
-        // whitelist
         $('f-whitelist').value = (r.whitelist || []).join('\n');
 
         $('btn-delete').style.display = isNew ? 'none' : 'inline-block';
@@ -707,12 +668,11 @@
         if (ev.target === $('modal')) closeModal();
     });
 
-    // ---------------- Инициализация ----------------
     (async () => {
         await loadCameras();
         await loadList();
         await loadLog();
-        setInterval(loadLog, 10000);  // журнал сам обновляется раз в 10 сек
+        setInterval(loadLog, 10000);
     })();
 })();
 </script>

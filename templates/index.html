@@ -16,47 +16,12 @@
             color: #e8e8e8;
             overflow: hidden;
         }
-        header {
-            height: 44px;
-            padding: 0 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #1e2126;
-            border-bottom: 1px solid #2a2f37;
-        }
-        header .title { font-weight: 600; }
-        header .actions {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        header .actions button,
-        header .actions a.btn-link {
-            background: #2a6df4; color: #fff;
-            border: none; border-radius: 4px;
-            padding: 6px 12px; cursor: pointer;
-            font-size: 0.9em; text-decoration: none;
-            display: inline-block;
-        }
-        header .actions button.secondary,
-        header .actions a.btn-link.secondary {
-            background: #3a4150;
-        }
-        header .actions button:hover,
-        header .actions a.btn-link:hover { opacity: 0.9; }
-        #clock { color: #8b96a5; font-size: 0.9em; margin-right: 8px; }
-        .user-badge {
-            color: #8b96a5; font-size: 0.85em;
-            padding: 3px 8px; background: #14161a;
-            border-radius: 4px; margin-right: 4px;
-        }
 
         #grid {
             display: grid;
             gap: 2px;
             padding: 2px;
-            height: calc(100vh - 44px - 26px);
+            height: calc(100vh - 48px - 26px);
             background: #000;
         }
         #grid.layout-1x1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
@@ -93,6 +58,7 @@
         footer {
             position: fixed;
             bottom: 0; left: 0; right: 0;
+            height: 26px;
             padding: 4px 12px;
             background: #1e2126;
             border-top: 1px solid #2a2f37;
@@ -219,29 +185,7 @@
 </head>
 <body>
 
-<header>
-    <div class="title" id="app-title">{{ cfg.title }}</div>
-    <div class="actions">
-        <span id="clock"></span>
-        {% if user %}
-            <span class="user-badge" title="Роль: {{ user.role }}">
-                {{ user.username }}{% if user.role == 'viewer' %} (просмотр){% endif %}
-            </span>
-        {% endif %}
-        <button class="secondary" onclick="toggleFullscreen()" title="Полный экран">⛶</button>
-        <a class="btn-link secondary" href="{{ url_for('events_page') }}">📋 События</a>
-        <a class="btn-link secondary" href="{{ url_for('analytics_page') }}">📊 Аналитика</a>
-        {% if user and user.role == 'admin' %}
-        <a class="btn-link secondary" href="{{ url_for('relay_page') }}">🔌 Реле</a>
-        <a class="btn-link secondary" href="{{ url_for('messaging_page') }}">📨 Уведомления</a>
-        {% endif %}
-        <a class="btn-link secondary" href="{{ url_for('about_page') }}">ℹ О программе</a>
-        {% if user and user.role == 'admin' %}
-            <button onclick="openSettings()">⚙ Настройки</button>
-        {% endif %}
-        <a class="btn-link secondary" href="/logout">Выход</a>
-    </div>
-</header>
+{% include '_nav.html' %}
 
 <div id="grid"></div>
 
@@ -304,7 +248,7 @@
             Порядок строк = порядок ячеек в сетке.<br>
             Колонка <b>«Аналитика»</b> включает обработку кадров этой камеры.
             Когда она включена — <b>под потоком раскрывается строка</b>
-            с выбором того, что искать (номера / люди / транспорт / животные).
+            с выбором того, что искать.
         </p>
 
         <table id="streams-table">
@@ -389,17 +333,16 @@
     const currentConfig = {{ cfg | tojson }};
 
 // =====================================================================
-// Часы
+// Часы (обновляются только если на странице есть #clock — только index)
 // =====================================================================
 function updateClock() {
-    const now = new Date();
     const el = document.getElementById('clock');
-    if (el) {
-        el.textContent = now.toLocaleString('ru-RU', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
-        });
-    }
+    if (!el) return;
+    const now = new Date();
+    el.textContent = now.toLocaleString('ru-RU', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
 }
 setInterval(updateClock, 1000);
 updateClock();
@@ -590,7 +533,6 @@ function addStreamRow(name, url, enabled, isNew, analytics) {
 
     table.appendChild(tbody);
 
-    // Заполняем чекбоксы выбранными значениями
     const selectedValues = new Set();
     if (an.plates) selectedValues.add('__plates__');
     (an.objects || []).forEach(o => selectedValues.add(o));
@@ -598,7 +540,6 @@ function addStreamRow(name, url, enabled, isNew, analytics) {
         cb.checked = selectedValues.has(cb.value);
     });
 
-    // Показ/скрытие строки чекбоксов при переключении «Аналитика»
     const anEnabled = tbody.querySelector('.st-an-enabled');
     const anRow = tbody.querySelector('.stream-an-row');
 
@@ -611,7 +552,6 @@ function addStreamRow(name, url, enabled, isNew, analytics) {
     }
     anEnabled.addEventListener('change', syncAnVisibility);
 
-    // Удаление
     tbody.querySelector('.st-remove').addEventListener('click', () => {
         tbody.remove();
     });
@@ -732,7 +672,6 @@ function openSettings() {
     srvTbody.innerHTML = '';
     (currentConfig.servers || []).forEach(s => addServerRow(s.name, s.url));
 
-    // Удаляем все <tbody class="stream-group">
     document.querySelectorAll('#streams-table tbody.stream-group')
         .forEach(tb => tb.remove());
 
@@ -790,9 +729,8 @@ async function saveSettings() {
 
         Object.assign(currentConfig, data.config);
 
-        // Защита от null
-        const titleEl = document.getElementById('app-title');
-        if (titleEl) titleEl.textContent = currentConfig.title;
+        // Обновляем только <title> браузера. Бренд в шапке (#app-title)
+        // не трогаем — там ссылка на главную и версия.
         document.title = currentConfig.title;
 
         renderGrid(currentConfig.streams, currentConfig.layout);

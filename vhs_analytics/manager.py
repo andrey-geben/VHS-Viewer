@@ -7,6 +7,8 @@ Per-camera параметры (analytics.cameras.<sid>):
 Глобально:
     objects_per_camera: true → ObjectDetector на каждую камеру (параллелизм)
                         false → один общий под lock (экономия RAM)
+    intra_op_num_threads: потоки ONNX Runtime для OCR (auto_tune подбирает
+                        по числу физических ядер CPU)
 
 ALPR pipeline всегда общий — ONNX-модели (YOLOv9 + RapidOCR) тяжелее
 YOLOv8n, и обычно ALPR нужен только на 1–2 камерах.
@@ -17,12 +19,12 @@ import threading
 
 import yaml
 
-from .stream_client import StreamerClient
+from .config import get_camera_config
 from .detector import ALPRDetector
 from .object_detector import ObjectDetector
-from .worker import StreamWorker
+from .stream_client import StreamerClient
 from .vhs2_alpr import AlprPipeline
-from .config import get_camera_config
+from .worker import StreamWorker
 
 log = logging.getLogger(__name__)
 
@@ -40,13 +42,13 @@ class AnalyticsManager:
             base_url=config["streamer_url"],
             rtsp_base=config.get("rtsp_base"),
         )
-        self.conf_threshold = config.get(
-            "plate_conf", config.get("conf_threshold", 0.5)
-        )
+        self.conf_threshold = config.get("plate_conf", config.get("conf_threshold", 0.5))
         self.object_conf = config.get("object_conf", 0.4)
         self.object_model = config.get("object_model", "yolov8n.pt")
         self.default_object_imgsz = config.get("object_imgsz", 640)
         self.objects_per_camera = bool(config.get("objects_per_camera", True))
+        # Потоки OCR для ONNX Runtime (auto_tune подбирает по ядрам)
+        self.ocr_intra_op_threads = config.get("intra_op_num_threads") or 4
         self.poll_interval = config.get("poll_interval", 15)
         self.debug_frames = config.get("debug_frames", 5)
         self.on_event = on_event
@@ -74,6 +76,7 @@ class AnalyticsManager:
             log.info("Создаю общий AlprPipeline...")
             self._pipeline = AlprPipeline(
                 detection_confidence=self.conf_threshold,
+                ocr_intra_op_threads=self.ocr_intra_op_threads,
             )
             self._pipeline._ensure_loaded()  # noqa: SLF001
             log.info("Общий AlprPipeline готов")
@@ -111,7 +114,7 @@ class AnalyticsManager:
 
     def _load_cameras_section(self) -> dict:
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
+            with open(self.config_path, encoding="utf-8") as f:
                 raw = yaml.safe_load(f) or {}
             section = raw.get("analytics") or {}
             cameras = section.get("cameras") or {}
@@ -124,13 +127,12 @@ class AnalyticsManager:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = threading.Thread(
-            target=self._run, daemon=True, name="analytics-manager"
-        )
+        self._thread = threading.Thread(target=self._run, daemon=True, name="analytics-manager")
         self._thread.start()
         log.info(
             f"AnalyticsManager started "
-            f"(objects_per_camera={self.objects_per_camera})"
+            f"(objects_per_camera={self.objects_per_camera}, "
+            f"ocr_intra_op={self.ocr_intra_op_threads})"
         )
 
     def stop(self):
@@ -252,9 +254,7 @@ class AnalyticsManager:
                 if obj.is_available():
                     detectors["object"] = obj
                 else:
-                    log.warning(
-                        f"[{sid}] objects заданы, но ObjectDetector недоступен"
-                    )
+                    log.warning(f"[{sid}] objects заданы, но ObjectDetector недоступен")
                     object_classes = []
 
             worker = StreamWorker(

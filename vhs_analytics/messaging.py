@@ -23,7 +23,6 @@ MAX особенности:
     поэтому retry с нарастающей паузой.
 """
 
-import json
 import logging
 import re
 import threading
@@ -81,9 +80,11 @@ def _normalize_plate(text: str) -> str:
 
 def _render_template(template: str, ctx: dict) -> str:
     """Подставляет {placeholder} в шаблон. Неизвестные — пустая строка."""
+
     def repl(match):
         key = match.group(1)
         return str(ctx.get(key, ""))
+
     return re.sub(r"\{(\w+)\}", repl, template or "")
 
 
@@ -119,16 +120,10 @@ class MessageChannel:
 
         # Фильтры
         cats = cfg.get("categories") or []
-        self.categories = set(
-            str(c).strip().lower() for c in cats if str(c).strip()
-        )
+        self.categories = set(str(c).strip().lower() for c in cats if str(c).strip())
         cams = cfg.get("cameras") or []
-        self.cameras = set(
-            str(c).strip() for c in cams if str(c).strip()
-        )
-        self.min_confidence = _clamp_float(
-            cfg.get("min_confidence", 0.0), 0.0, 1.0, 0.0
-        )
+        self.cameras = set(str(c).strip() for c in cams if str(c).strip())
+        self.min_confidence = _clamp_float(cfg.get("min_confidence", 0.0), 0.0, 1.0, 0.0)
 
         # Что отправляем
         self.template = str(cfg.get("template") or DEFAULT_TEMPLATE)
@@ -196,11 +191,12 @@ class MessageChannel:
             "camera_name": stream.get("name", ""),
             "iso": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "confidence": f"{conf:.2f}",
-            "confidence_pct": f"{conf*100:.0f}",
+            "confidence_pct": f"{conf * 100:.0f}",
         }
 
-    def send(self, detection: dict, stream: dict,
-             snapshot_path: Path | None = None) -> tuple[bool, str | None]:
+    def send(
+        self, detection: dict, stream: dict, snapshot_path: Path | None = None
+    ) -> tuple[bool, str | None]:
         """Отправляет одно событие. Возвращает (ok, error)."""
         ctx = self._build_context(detection, stream)
         text = _render_template(self.template, ctx)
@@ -216,8 +212,7 @@ class MessageChannel:
     # ------------------------------------------------------------------
     #  Telegram
     # ------------------------------------------------------------------
-    def _send_telegram(self, text: str,
-                       snapshot_path: Path | None) -> tuple[bool, str | None]:
+    def _send_telegram(self, text: str, snapshot_path: Path | None) -> tuple[bool, str | None]:
         if not self.token or not self.chat_id:
             return False, "telegram: token или chat_id не заданы"
 
@@ -262,8 +257,7 @@ class MessageChannel:
     # ------------------------------------------------------------------
     #  MAX
     # ------------------------------------------------------------------
-    def _send_max(self, text: str,
-                  snapshot_path: Path | None) -> tuple[bool, str | None]:
+    def _send_max(self, text: str, snapshot_path: Path | None) -> tuple[bool, str | None]:
         if not self.max_token:
             return False, "max: max_token не задан"
         if not self.max_recipient_id:
@@ -280,22 +274,22 @@ class MessageChannel:
         if self.attach_snapshot and snapshot_path and snapshot_path.exists():
             ok, token_or_err = self._max_upload_image(snapshot_path, headers)
             if ok:
-                attachments.append({
-                    "type": "image",
-                    "payload": {"token": token_or_err},
-                })
+                attachments.append(
+                    {
+                        "type": "image",
+                        "payload": {"token": token_or_err},
+                    }
+                )
             else:
                 # Не падаем: отправляем хотя бы текст, но фиксируем в логе
                 log.warning(
-                    "max[%s]: не удалось загрузить изображение — %s; "
-                    "отправляю только текст",
-                    self.id, token_or_err,
+                    "max[%s]: не удалось загрузить изображение — %s; отправляю только текст",
+                    self.id,
+                    token_or_err,
                 )
 
         # Шаг 3: POST /messages с retry на attachment.not.ready
-        params_key = (
-            "user_id" if self.max_recipient_type == "user" else "chat_id"
-        )
+        params_key = "user_id" if self.max_recipient_type == "user" else "chat_id"
         params = {params_key: str(self.max_recipient_id)}
 
         body = {"text": text[:4000]}
@@ -312,8 +306,11 @@ class MessageChannel:
                 time.sleep(delay)
             try:
                 r = requests.post(
-                    url, params=params, json=body,
-                    headers=headers, timeout=self.timeout,
+                    url,
+                    params=params,
+                    json=body,
+                    headers=headers,
+                    timeout=self.timeout,
                 )
             except requests.RequestException as e:
                 last_err = f"max: {e}"
@@ -337,8 +334,7 @@ class MessageChannel:
 
         return False, last_err or "max: не удалось отправить"
 
-    def _max_upload_image(self, snapshot_path: Path,
-                          headers: dict) -> tuple[bool, str]:
+    def _max_upload_image(self, snapshot_path: Path, headers: dict) -> tuple[bool, str]:
         """
         Двухшаговая загрузка изображения в MAX.
 
@@ -420,9 +416,9 @@ class MessageChannel:
     # ------------------------------------------------------------------
     #  Webhook
     # ------------------------------------------------------------------
-    def _send_webhook(self, text: str, detection: dict,
-                      stream: dict,
-                      snapshot_path: Path | None) -> tuple[bool, str | None]:
+    def _send_webhook(
+        self, text: str, detection: dict, stream: dict, snapshot_path: Path | None
+    ) -> tuple[bool, str | None]:
         if not self.url:
             return False, "webhook: url не задан"
 
@@ -444,13 +440,22 @@ class MessageChannel:
 
         try:
             if self.method == "POST":
-                r = requests.post(self.url, json=payload,
-                                  headers=self.headers, timeout=self.timeout)
+                r = requests.post(
+                    self.url, json=payload, headers=self.headers, timeout=self.timeout
+                )
             else:
-                r = requests.get(self.url, params={"text": text, **{
-                    "category": detection.get("category"),
-                    "camera": stream.get("id"),
-                }}, headers=self.headers, timeout=self.timeout)
+                r = requests.get(
+                    self.url,
+                    params={
+                        "text": text,
+                        **{
+                            "category": detection.get("category"),
+                            "camera": stream.get("id"),
+                        },
+                    },
+                    headers=self.headers,
+                    timeout=self.timeout,
+                )
 
             if 200 <= r.status_code < 400:
                 return True, None
@@ -506,18 +511,14 @@ class MessageManager:
 
         self.channels = new
         n_enabled = sum(1 for c in self.channels.values() if c.enabled)
-        log.info(
-            f"MessageManager: каналов={len(self.channels)}, "
-            f"включено={n_enabled}"
-        )
+        log.info(f"MessageManager: каналов={len(self.channels)}, включено={n_enabled}")
 
     def reload_from_cfg(self, cfg: dict):
         with self._lock:
             self._apply_cfg(cfg)
         log.info("MessageManager: конфигурация перезагружена")
 
-    def send_all(self, detection: dict, stream: dict,
-                 snapshot_path: Path | None = None) -> int:
+    def send_all(self, detection: dict, stream: dict, snapshot_path: Path | None = None) -> int:
         """Проходит по всем каналам, отправляет подходящим."""
         count = 0
         with self._lock:
@@ -531,11 +532,9 @@ class MessageManager:
                 ok, err = ch.send(detection, stream, snapshot_path)
                 if ok:
                     count += 1
-                    self._log_write(ch.id, ch.type,
-                                    detection, stream, "sent", "")
+                    self._log_write(ch.id, ch.type, detection, stream, "sent", "")
                 else:
-                    self._log_write(ch.id, ch.type,
-                                    detection, stream, "error", err or "")
+                    self._log_write(ch.id, ch.type, detection, stream, "error", err or "")
                     log.warning(f"messaging[{ch.id}]: ошибка — {err}")
             except Exception:
                 log.exception(f"messaging[{ch.id}]: ошибка send")
@@ -546,29 +545,36 @@ class MessageManager:
             ch = self.channels.get(channel_id)
         if ch is None:
             return {"ok": False, "error": f"канал '{channel_id}' не найден"}
-        fake_det = {"category": "plate", "label": "А000АА00",
-                    "plate": "А000АА00", "confidence": 0.99}
+        fake_det = {
+            "category": "plate",
+            "label": "А000АА00",
+            "plate": "А000АА00",
+            "confidence": 0.99,
+        }
         fake_stream = {"id": "test_camera", "name": "Тестовая камера"}
         ok, err = ch.send(fake_det, fake_stream, None)
         if ok:
-            self._log_write(ch.id, ch.type, fake_det, fake_stream,
-                            "test", "")
+            self._log_write(ch.id, ch.type, fake_det, fake_stream, "test", "")
         return {"ok": ok, "error": err}
 
-    def _log_write(self, channel_id: str, channel_type: str,
-                   detection: dict, stream: dict,
-                   action: str, details: str):
+    def _log_write(
+        self,
+        channel_id: str,
+        channel_type: str,
+        detection: dict,
+        stream: dict,
+        action: str,
+        details: str,
+    ):
         if not self.log_path:
             return
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cat = detection.get("category") or "?"
         label = detection.get("label") or detection.get("plate") or "?"
         cam = stream.get("id") or "?"
-        line = (f"{ts}\t{channel_id}\t{channel_type}\t{cat}:{label}"
-                f"\t{cam}\t{action}\t{details}\n")
+        line = f"{ts}\t{channel_id}\t{channel_type}\t{cat}:{label}\t{cam}\t{action}\t{details}\n"
         try:
-            with self._write_lock:
-                with open(self.log_path, "a", encoding="utf-8") as f:
-                    f.write(line)
+            with self._write_lock, open(self.log_path, "a", encoding="utf-8") as f:
+                f.write(line)
         except Exception:
             log.exception("messaging: не удалось записать в messages.log")

@@ -73,6 +73,8 @@ hiddenimports += [
     "PIL", "PIL.Image",
     "cv2", "numpy",
     "certifi", "charset_normalizer", "urllib3",
+    "vhs_analytics.hardware",     # ← новое
+    "vhs_analytics.labels_ru",    # ← новое
 ]
 
 a = Analysis(

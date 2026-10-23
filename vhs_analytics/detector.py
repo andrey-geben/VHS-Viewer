@@ -13,7 +13,8 @@ process_every=5 / window=2 / min_votes=3.
 
 import logging
 
-from .vhs2_alpr import AlprDetector as VHS2AlprDetector, AlprPipeline
+from .vhs2_alpr import AlprDetector as VHS2AlprDetector
+from .vhs2_alpr import AlprPipeline
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class ALPRDetector:
             process_every_n_frames=process_every_n_frames,
             voting_window_sec=voting_window_sec,
             min_votes=min_votes,
-            cooldown_same_plate_sec=15.0,   # было 30 — не спамим, но и не ждём долго
+            cooldown_same_plate_sec=15.0,  # было 30 — не спамим, но и не ждём долго
             cooldown_any_sec=2.0,
         )
         mode = "shared pipeline" if pipeline is not None else "own pipeline"
@@ -62,13 +63,15 @@ class ALPRDetector:
             plate = det.get("plate_text")
             if not plate:
                 continue
-            results.append({
-                "category": "plate",
-                "label": plate,
-                "plate": plate,
-                "bbox": det.get("bbox"),
-                "confidence": det.get("confidence", 0.0),
-            })
+            results.append(
+                {
+                    "category": "plate",
+                    "label": plate,
+                    "plate": plate,
+                    "bbox": det.get("bbox"),
+                    "confidence": det.get("confidence", 0.0),
+                }
+            )
         return results
 
     def annotate_frame(self, frame):

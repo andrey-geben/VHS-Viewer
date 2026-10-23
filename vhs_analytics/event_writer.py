@@ -28,19 +28,14 @@ class EventWriter:
         self.snapshot_dir = self.log_dir / "snapshots"
         self.snapshot_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        log.info(
-            f"EventWriter: jsonl={self.jsonl_path}, "
-            f"snapshots={self.snapshot_dir}"
-        )
+        log.info(f"EventWriter: jsonl={self.jsonl_path}, snapshots={self.snapshot_dir}")
 
     def add(self, stream: dict, detection: dict, frame) -> str | None:
         ts = time.time()
         iso = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
         camera_id = stream.get("id", "unknown")
         camera_name = stream.get("name", camera_id)
-        category = detection.get("category") or (
-            "plate" if detection.get("plate") else "object"
-        )
+        category = detection.get("category") or ("plate" if detection.get("plate") else "object")
         label = detection.get("label") or detection.get("plate") or "?"
         plate = detection.get("plate")
         conf = float(detection.get("confidence", 0.0))
@@ -53,18 +48,22 @@ class EventWriter:
                 if bbox:
                     x, y, w, h = map(int, bbox)
                     color = CATEGORY_COLORS.get(category, (200, 200, 200))
-                    cv2.rectangle(
-                        annotated, (x, y), (x + w, y + h), color, 3
-                    )
+                    cv2.rectangle(annotated, (x, y), (x + w, y + h), color, 3)
                     cv2.putText(
-                        annotated, label, (x, max(24, y - 10)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2,
+                        annotated,
+                        label,
+                        (x, max(24, y - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.0,
+                        color,
+                        2,
                     )
                 safe = "".join(c for c in label if c.isalnum()) or "x"
                 fname = f"{int(ts * 1000)}_{camera_id}_{safe}.jpg"
                 fpath = self.snapshot_dir / fname
                 cv2.imwrite(
-                    str(fpath), annotated,
+                    str(fpath),
+                    annotated,
                     [cv2.IMWRITE_JPEG_QUALITY, 85],
                 )
                 snapshot_rel = f"snapshots/{fname}"

@@ -10,8 +10,10 @@ VHS-Viewer — компактный веб-клиент для просмотр�
     * Per-camera настройки аналитики (enabled/plates/objects/every/imgsz).
     * Страница реле (/relay) — список HTTP-реле с per-relay whitelist.
     * Страница уведомлений (/messaging) — Telegram / MAX / webhook.
+    * Страница «Железо» (/hardware) — профиль, рекомендации, auto_tune.
     * Встроенная аналитика (autostart) — без отдельного run_analytics.py.
 """
+
 import json
 import logging
 import os
@@ -25,16 +27,27 @@ from threading import Timer
 import requests
 import yaml
 from flask import (
-    Flask, jsonify, render_template, request, send_from_directory,
-    redirect, url_for, g, session,
-)
-
-from __version__ import (
-    APP_NAME, APP_TITLE, APP_FOOTER,
-    __version__, __author__, __copyright__, __license__, __url__,
+    Flask,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    session,
+    url_for,
 )
 
 import auth as auth_mod
+from __version__ import (
+    APP_FOOTER,
+    APP_NAME,
+    __author__,
+    __copyright__,
+    __license__,
+    __url__,
+    __version__,
+)
 
 
 # ----------------------------------------------------------------------
@@ -68,15 +81,19 @@ LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
 _console = logging.StreamHandler()
-_console.setFormatter(logging.Formatter(
-    "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-))
+_console.setFormatter(
+    logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+)
 _file = logging.FileHandler(LOG_DIR / "vhs-viewer.log", encoding="utf-8")
-_file.setFormatter(logging.Formatter(
-    "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-))
+_file.setFormatter(
+    logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -113,7 +130,7 @@ def load_config() -> dict:
     if not CONFIG_PATH.exists():
         return dict(DEFAULT_CONFIG)
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
         for k, v in DEFAULT_CONFIG.items():
             cfg.setdefault(k, v)
@@ -244,6 +261,273 @@ def about_page():
 
 
 # ======================================================================
+# Первый запуск — мастер настройки
+# ======================================================================
+SETUP_FLAG = "_setup_complete"
+
+
+def _is_setup_complete() -> bool:
+    """True, если viewer_config.yaml существует и содержит _setup_complete: true."""
+    if not CONFIG_PATH.exists():
+        return False
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+        return bool(cfg.get(SETUP_FLAG))
+    except Exception:
+        return False
+
+
+def _reset_logs_on_setup():
+    """
+    Очищает журналы событий/реле/уведомлений и снапшоты.
+    vhs-viewer.log НЕ трогает — он открыт текущим процессом (WinError 32).
+    """
+    cleared = []
+    for name in ("alpr_events.jsonl", "relay.log", "messages.log"):
+        p = LOGS_DIR / name
+        if p.exists():
+            try:
+                p.write_text("", encoding="utf-8")
+                cleared.append(name)
+            except Exception:
+                logger.warning("setup: не удалось очистить %s", name)
+
+    snaps_dir = LOGS_DIR / "snapshots"
+    if snaps_dir.exists():
+        try:
+            for f in snaps_dir.glob("*.jpg"):
+                try:
+                    f.unlink()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    logger.info("setup: очищены журналы: %s", cleared or "нет файлов")
+
+
+def _complete_setup(
+    streamer_url: str,
+    username: str,
+    password: str,
+    clear_logs: bool,
+) -> None:
+    """Создаёт свежий viewer_config.yaml с флагом _setup_complete."""
+    # 1. Бэкап существующего конфига (если есть)
+    if CONFIG_PATH.exists():
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup = CONFIG_PATH.with_name(f"viewer_config.yaml.bak.{ts}")
+        try:
+            CONFIG_PATH.replace(backup)
+            logger.info("setup: старый конфиг сохранён как %s", backup.name)
+        except Exception:
+            logger.exception("setup: не удалось сделать бэкап конфига")
+
+    # 2. Свежий конфиг
+    url = streamer_url.rstrip("/")
+    cfg = {
+        SETUP_FLAG: True,
+        "title": "VHS-Viewer",
+        "layout": "2x2",
+        "servers": [{"name": "local", "url": url}],
+        "streams": [],
+        "security": {
+            "auth_enabled": True,
+            "session_lifetime_hours": 24,
+            "users": [
+                {"username": username, "password": password, "role": "admin"},
+            ],
+        },
+        "analytics": {
+            "enabled": True,
+            "autostart": True,
+            "auto_tune": True,
+            "streamer_url": url,
+            "rtsp_base": None,
+            "poll_interval": 15,
+            "conf_threshold": 0.5,
+            "object_model": "yolov8n.pt",
+            "object_conf": 0.4,
+            "object_imgsz": 640,
+            "analyze_every_n": 1,
+            "intra_op_num_threads": None,
+            "cameras": {
+                "default": {
+                    "enabled": False,
+                    "plates": False,
+                    "objects": [],
+                },
+            },
+        },
+        "relay": {"relays": []},
+        "messaging": {"channels": []},
+    }
+
+    # 3. Сохраняем
+    save_config(cfg)
+    app.config["VIEWER_CONFIG"] = cfg
+    try:
+        auth_mod.apply_session_lifetime(app, cfg)
+    except Exception:
+        pass
+
+    # 4. Логи — опционально
+    if clear_logs:
+        _reset_logs_on_setup()
+
+
+@app.before_request
+def _ensure_setup():
+    """Пока setup не завершён — все запросы ведут на /setup."""
+    if _is_setup_complete():
+        return None
+
+    path = request.path or ""
+    allowed = ("/setup", "/static/", "/favicon.ico")
+    if any(path.startswith(p) for p in allowed):
+        return None
+
+    if path.startswith("/api/"):
+        return jsonify(
+            {
+                "error": "setup required",
+                "setup_url": "/setup",
+            }
+        ), 503
+
+    return redirect(url_for("setup_page"))
+
+
+@app.route("/setup", methods=["GET", "POST"])
+def setup_page():
+    if _is_setup_complete():
+        return redirect(url_for("index"))
+
+    error = None
+    warning = None
+
+    # Предупреждение, если конфиг уже был (пришёл из проекта / старой версии)
+    if CONFIG_PATH.exists() and request.method == "GET":
+        warning = (
+            "Найден существующий viewer_config.yaml. "
+            "Он будет сохранён в бэкап как "
+            "viewer_config.yaml.bak.<время> и заменён новым."
+        )
+
+    if request.method == "POST":
+        streamer_url = (request.form.get("streamer_url") or "").strip()
+        username = (request.form.get("username") or "").strip()
+        password = request.form.get("password") or ""
+        password2 = request.form.get("password2") or ""
+        clear_logs = request.form.get("clear_logs") == "on"
+
+        errors = []
+        if not streamer_url:
+            errors.append("URL Streamer обязателен")
+        elif not streamer_url.startswith(("http://", "https://")):
+            errors.append("URL должен начинаться с http:// или https://")
+
+        if not username:
+            errors.append("Логин администратора обязателен")
+        elif len(username) < 3:
+            errors.append("Логин: минимум 3 символа")
+
+        if not password:
+            errors.append("Пароль обязателен")
+        elif len(password) < 6:
+            errors.append("Пароль: минимум 6 символов")
+        elif password != password2:
+            errors.append("Пароли не совпадают")
+        elif password.lower() in ("admin", "viewer", "password", "123456", "change-me"):
+            errors.append("Пароль слишком простой, выберите другой")
+
+        if errors:
+            error = "; ".join(errors)
+        else:
+            try:
+                _complete_setup(streamer_url, username, password, clear_logs)
+                logger.info("setup: завершён, admin=%s", username)
+
+                # Автологин
+                session["user"] = {"username": username, "role": "admin"}
+                session.permanent = True
+
+                # Запускаем аналитику динамически (при старте она пропускалась)
+                try:
+                    _start_embedded_analytics()
+                except Exception:
+                    logger.exception("setup: не удалось запустить аналитику")
+
+                return redirect(url_for("index"))
+            except Exception as e:
+                logger.exception("setup: ошибка сохранения")
+                error = f"Не удалось сохранить конфигурацию: {e}"
+
+    return render_template(
+        "setup.html",
+        error=error,
+        warning=warning,
+        default_streamer="http://127.0.0.1:8000",
+        default_username="admin",
+        app_footer=APP_FOOTER,
+        version=__version__,
+    )
+
+
+# ======================================================================
+# Hardware: профиль железа и рекомендации
+# ======================================================================
+@app.route("/hardware")
+@auth_mod.admin_required
+def hardware_page():
+    return render_template(
+        "hardware.html",
+        user=g.user,
+        app_footer=APP_FOOTER,
+        version=__version__,
+    )
+
+
+@app.route("/api/hardware")
+@auth_mod.admin_required
+def api_hardware():
+    try:
+        from vhs_analytics.hardware import detect_hardware
+
+        hw = detect_hardware()
+        cfg = load_config()
+        an = cfg.get("analytics") or {}
+        data = hw.to_dict()
+        data["auto_tune"] = bool(an.get("auto_tune", True))
+        data["intra_op_num_threads"] = an.get("intra_op_num_threads")
+        data["analyze_every_n"] = an.get("analyze_every_n")
+        data["object_imgsz"] = an.get("object_imgsz")
+        data["objects_per_camera"] = an.get("objects_per_camera")
+        return jsonify(data)
+    except Exception as e:
+        logger.exception("hardware detect failed")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/hardware/auto_tune", methods=["POST"])
+@auth_mod.admin_required
+def api_hardware_auto_tune():
+    data = request.get_json(silent=True) or {}
+    enabled = bool(data.get("enabled", True))
+
+    cfg = load_config()
+    an = cfg.get("analytics") or {}
+    an["auto_tune"] = enabled
+    cfg["analytics"] = an
+    save_config(cfg)
+    app.config["VIEWER_CONFIG"] = cfg
+
+    logger.info("auto_tune переключён в %s (применится после перезапуска)", enabled)
+    return jsonify({"ok": True, "auto_tune": enabled})
+
+
+# ======================================================================
 # События
 # ======================================================================
 @app.route("/events")
@@ -305,7 +589,8 @@ def _read_recent_events(
                 if needle is not None:
                     plate_s = str(e.get("plate") or "").lower()
                     label_s = str(e.get("label") or "").lower()
-                    if needle not in plate_s and needle not in label_s:
+                    label_ru_s = str(e.get("label_ru") or "").lower()
+                    if needle not in plate_s and needle not in label_s and needle not in label_ru_s:
                         continue
 
                 out.append(e)
@@ -345,16 +630,18 @@ def api_events():
         camera_id=camera_id,
         search=search,
     )
-    return jsonify({
-        "events": events,
-        "count": len(events),
-        "filters": {
-            "categories": categories,
-            "camera_id": camera_id,
-            "search": search,
-            "limit": limit,
-        },
-    })
+    return jsonify(
+        {
+            "events": events,
+            "count": len(events),
+            "filters": {
+                "categories": categories,
+                "camera_id": camera_id,
+                "search": search,
+                "limit": limit,
+            },
+        }
+    )
 
 
 @app.route("/api/events/cameras")
@@ -366,12 +653,14 @@ def api_events_cameras():
         cid = e.get("camera_id")
         if cid and cid not in seen:
             seen[cid] = e.get("camera_name") or cid
-    return jsonify({
-        "cameras": [
-            {"id": cid, "name": name}
-            for cid, name in sorted(seen.items(), key=lambda x: x[1].lower())
-        ],
-    })
+    return jsonify(
+        {
+            "cameras": [
+                {"id": cid, "name": name}
+                for cid, name in sorted(seen.items(), key=lambda x: x[1].lower())
+            ],
+        }
+    )
 
 
 # ======================================================================
@@ -410,13 +699,16 @@ def api_analytics_summary():
         if not cat:
             cat = "plate" if e.get("plate") else "object"
 
-        entry = cameras.setdefault(cid, {
-            "camera_id": cid,
-            "camera_name": e.get("camera_name") or cid,
-            "total": 0,
-            "by_category": {},
-            "last_event": None,
-        })
+        entry = cameras.setdefault(
+            cid,
+            {
+                "camera_id": cid,
+                "camera_name": e.get("camera_name") or cid,
+                "total": 0,
+                "by_category": {},
+                "last_event": None,
+            },
+        )
         entry["total"] += 1
         entry["by_category"][cat] = entry["by_category"].get(cat, 0) + 1
 
@@ -428,15 +720,18 @@ def api_analytics_summary():
                 "iso": iso,
                 "category": cat,
                 "label": e.get("label") or e.get("plate") or "?",
+                "label_ru": e.get("label_ru") or "",
                 "confidence": e.get("confidence"),
                 "snapshot": e.get("snapshot"),
             }
 
-    return jsonify({
-        "cameras": cameras,
-        "date": today_prefix,
-        "events_scanned": scanned,
-    })
+    return jsonify(
+        {
+            "cameras": cameras,
+            "date": today_prefix,
+            "events_scanned": scanned,
+        }
+    )
 
 
 # ======================================================================
@@ -445,7 +740,7 @@ def api_analytics_summary():
 def _load_root_yaml_section(section: str) -> dict:
     """Читает секцию верхнего уровня из YAML."""
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
         r = raw.get(section)
         return r if isinstance(r, dict) else {}
@@ -505,11 +800,10 @@ def _save_relay_cfg(relay_cfg: dict):
 
     try:
         from vhs_analytics.relay import RelayManager
+
         live = RelayManager(relay_cfg, log_dir=LOGS_DIR)
         mgr._relay = live
-        logger.info(
-            "RelayManager создан лениво из UI: реле=%d", len(live.relays)
-        )
+        logger.info("RelayManager создан лениво из UI: реле=%d", len(live.relays))
     except Exception:
         logger.exception("не удалось создать RelayManager лениво")
 
@@ -541,9 +835,11 @@ def relay_page():
 @auth_mod.admin_required
 def api_relay_list():
     rc = _get_relay_cfg()
-    return jsonify({
-        "relays": [_relay_public(r) for r in rc.get("relays", [])],
-    })
+    return jsonify(
+        {
+            "relays": [_relay_public(r) for r in rc.get("relays", [])],
+        }
+    )
 
 
 @app.route("/api/relay/<relay_id>", methods=["GET"])
@@ -584,40 +880,33 @@ def api_relay_save(relay_id: str):
         except (TypeError, ValueError):
             return default
 
-    url_open = str(
-        data.get("url_open", existing.get("url_open") if existing else "") or ""
-    ).strip()
-    enabled = bool(
-        data.get("enabled", existing.get("enabled", False) if existing else False)
-    )
+    url_open = str(data.get("url_open", existing.get("url_open") if existing else "") or "").strip()
+    enabled = bool(data.get("enabled", existing.get("enabled", False) if existing else False))
     if enabled and not url_open:
         return jsonify({"error": "url_open обязателен, если реле включено"}), 400
 
     new_entry: dict = dict(existing or {})
     new_entry["id"] = rid
-    new_entry["name"] = str(
-        data.get("name") or (existing or {}).get("name") or rid
-    ).strip()
+    new_entry["name"] = str(data.get("name") or (existing or {}).get("name") or rid).strip()
     new_entry["enabled"] = enabled
     new_entry["url_open"] = url_open
     new_entry["url_close"] = str(
         data.get("url_close", existing.get("url_close") if existing else "") or ""
     ).strip()
-    m = str(
-        data.get("method", existing.get("method") if existing else "GET") or "GET"
-    ).upper()
+    m = str(data.get("method", existing.get("method") if existing else "GET") or "GET").upper()
     new_entry["method"] = m if m in ("GET", "POST") else "GET"
     new_entry["timeout"] = _clamp_float(
-        data.get("timeout", existing.get("timeout", 5.0) if existing else 5.0),
-        0.5, 60.0, 5.0)
+        data.get("timeout", existing.get("timeout", 5.0) if existing else 5.0), 0.5, 60.0, 5.0
+    )
     new_entry["open_duration_sec"] = _clamp_int(
-        data.get("open_duration_sec",
-                 existing.get("open_duration_sec", 5) if existing else 5),
-        1, 3600, 5)
+        data.get("open_duration_sec", existing.get("open_duration_sec", 5) if existing else 5),
+        1,
+        3600,
+        5,
+    )
     new_entry["cooldown_sec"] = _clamp_int(
-        data.get("cooldown_sec",
-                 existing.get("cooldown_sec", 30) if existing else 30),
-        0, 86400, 30)
+        data.get("cooldown_sec", existing.get("cooldown_sec", 30) if existing else 30), 0, 86400, 30
+    )
 
     if "username" in data:
         u = str(data.get("username") or "").strip()
@@ -633,16 +922,12 @@ def api_relay_save(relay_id: str):
     cams = data.get("cameras")
     if cams is not None:
         if isinstance(cams, list):
-            new_entry["cameras"] = [
-                str(c).strip() for c in cams if str(c).strip()
-            ]
+            new_entry["cameras"] = [str(c).strip() for c in cams if str(c).strip()]
         else:
             new_entry["cameras"] = []
 
     if "whitelist" in data and isinstance(data.get("whitelist"), list):
-        new_entry["whitelist"] = [
-            str(p).strip() for p in data["whitelist"] if str(p).strip()
-        ]
+        new_entry["whitelist"] = [str(p).strip() for p in data["whitelist"] if str(p).strip()]
     elif "whitelist" not in new_entry:
         new_entry["whitelist"] = []
 
@@ -675,15 +960,17 @@ def api_relay_delete(relay_id: str):
 def api_relay_test(relay_id: str):
     live = _get_live_relay_manager()
     if live is None:
-        return jsonify({
-            "ok": False,
-            "error": (
-                "RelayManager не активен. Возможные причины: "
-                "1) analytics.autostart=false в YAML; "
-                "2) реле добавлено через UI уже после старта, "
-                "перезапустите viewer.py."
-            ),
-        }), 200
+        return jsonify(
+            {
+                "ok": False,
+                "error": (
+                    "RelayManager не активен. Возможные причины: "
+                    "1) analytics.autostart=false в YAML; "
+                    "2) реле добавлено через UI уже после старта, "
+                    "перезапустите viewer.py."
+                ),
+            }
+        ), 200
     res = live.test_relay(relay_id)
     return jsonify(res), 200
 
@@ -735,10 +1022,7 @@ def api_relay_wl_remove(relay_id: str):
         return jsonify({"error": "реле не найдено"}), 404
 
     wl = list(target.get("whitelist") or [])
-    new_wl = [
-        p for p in wl
-        if _normalize_plate(p) != _normalize_plate(plate)
-    ]
+    new_wl = [p for p in wl if _normalize_plate(p) != _normalize_plate(plate)]
     if len(new_wl) == len(wl):
         return jsonify({"error": "номера нет в списке"}), 404
     target["whitelist"] = new_wl
@@ -795,9 +1079,7 @@ def _save_messaging_cfg(messaging_cfg: dict):
 
     mgr = globals().get("_analytics_manager")
     if mgr is None:
-        logger.info(
-            "MessageManager: аналитика не запущена, изменения только в YAML"
-        )
+        logger.info("MessageManager: аналитика не запущена, изменения только в YAML")
         return
 
     live = getattr(mgr, "_messaging", None)
@@ -811,6 +1093,7 @@ def _save_messaging_cfg(messaging_cfg: dict):
 
     try:
         from vhs_analytics.messaging import MessageManager
+
         live = MessageManager(messaging_cfg, log_dir=LOGS_DIR)
         mgr._messaging = live
         logger.info(
@@ -872,9 +1155,11 @@ def messaging_page():
 @auth_mod.admin_required
 def api_messaging_list():
     mc = _get_messaging_cfg()
-    return jsonify({
-        "channels": [_messaging_public(c) for c in mc.get("channels", [])],
-    })
+    return jsonify(
+        {
+            "channels": [_messaging_public(c) for c in mc.get("channels", [])],
+        }
+    )
 
 
 @app.route("/api/messaging/<channel_id>", methods=["GET"])
@@ -926,24 +1211,20 @@ def api_messaging_save(channel_id: str):
     entry["type"] = ch_type
     entry["enabled"] = bool(data.get("enabled", base.get("enabled", False)))
 
-    # Подключение Telegram
     if "token" in data and data.get("token"):
         entry["token"] = str(data["token"]).strip()
     elif "token" not in entry:
         entry["token"] = ""
 
-    entry["chat_id"] = str(
-        data.get("chat_id", entry.get("chat_id", "")) or ""
-    ).strip()
+    entry["chat_id"] = str(data.get("chat_id", entry.get("chat_id", "")) or "").strip()
     entry["url"] = str(data.get("url", entry.get("url", "")) or "").strip()
 
     m = str(data.get("method", entry.get("method", "POST")) or "POST").upper()
     entry["method"] = m if m in ("GET", "POST") else "POST"
     entry["timeout"] = _clamp_float(
-        data.get("timeout", entry.get("timeout", 10.0)),
-        1.0, 120.0, 10.0)
+        data.get("timeout", entry.get("timeout", 10.0)), 1.0, 120.0, 10.0
+    )
 
-    # MAX-специфичные поля
     if "max_token" in data and data.get("max_token"):
         entry["max_token"] = str(data["max_token"]).strip()
     elif "max_token" not in entry:
@@ -954,64 +1235,43 @@ def api_messaging_save(channel_id: str):
     ).strip()
 
     rt = str(
-        data.get("max_recipient_type", entry.get("max_recipient_type", "user"))
-        or "user"
+        data.get("max_recipient_type", entry.get("max_recipient_type", "user")) or "user"
     ).lower()
     entry["max_recipient_type"] = rt if rt in ("user", "chat") else "user"
 
-    # Фильтры
     if "categories" in data and isinstance(data.get("categories"), list):
-        entry["categories"] = [
-            str(x).strip().lower()
-            for x in data["categories"] if str(x).strip()
-        ]
+        entry["categories"] = [str(x).strip().lower() for x in data["categories"] if str(x).strip()]
     elif "categories" not in entry:
         entry["categories"] = []
 
     if "cameras" in data and isinstance(data.get("cameras"), list):
-        entry["cameras"] = [
-            str(x).strip() for x in data["cameras"] if str(x).strip()
-        ]
+        entry["cameras"] = [str(x).strip() for x in data["cameras"] if str(x).strip()]
     elif "cameras" not in entry:
         entry["cameras"] = []
 
     entry["min_confidence"] = _clamp_float(
-        data.get("min_confidence", entry.get("min_confidence", 0.0)),
-        0.0, 1.0, 0.0)
+        data.get("min_confidence", entry.get("min_confidence", 0.0)), 0.0, 1.0, 0.0
+    )
 
-    # Шаблон / снапшот / cooldown
     if "template" in data:
         entry["template"] = str(data.get("template") or "")
     elif "template" not in entry:
         entry["template"] = ""
 
-    entry["attach_snapshot"] = bool(
-        data.get("attach_snapshot", entry.get("attach_snapshot", True)))
+    entry["attach_snapshot"] = bool(data.get("attach_snapshot", entry.get("attach_snapshot", True)))
     entry["cooldown_sec"] = _clamp_int(
-        data.get("cooldown_sec", entry.get("cooldown_sec", 0)),
-        0, 86400, 0)
+        data.get("cooldown_sec", entry.get("cooldown_sec", 0)), 0, 86400, 0
+    )
 
-    # Валидация обязательных полей при enabled
     if entry["enabled"]:
-        if ch_type == "telegram" and (
-            not entry.get("token") or not entry.get("chat_id")
-        ):
-            return jsonify({
-                "error": "Telegram: для включённого канала нужны token и chat_id"
-            }), 400
-        if ch_type == "max" and (
-            not entry.get("max_token") or not entry.get("max_recipient_id")
-        ):
-            return jsonify({
-                "error": (
-                    "MAX: для включённого канала нужны "
-                    "max_token и max_recipient_id"
-                )
-            }), 400
+        if ch_type == "telegram" and (not entry.get("token") or not entry.get("chat_id")):
+            return jsonify({"error": "Telegram: для включённого канала нужны token и chat_id"}), 400
+        if ch_type == "max" and (not entry.get("max_token") or not entry.get("max_recipient_id")):
+            return jsonify(
+                {"error": ("MAX: для включённого канала нужны max_token и max_recipient_id")}
+            ), 400
         if ch_type == "webhook" and not entry.get("url"):
-            return jsonify({
-                "error": "Webhook: для включённого канала нужен url"
-            }), 400
+            return jsonify({"error": "Webhook: для включённого канала нужен url"}), 400
 
     if existing is None:
         mc["channels"].append(entry)
@@ -1020,8 +1280,9 @@ def api_messaging_save(channel_id: str):
         mc["channels"][idx] = entry
 
     _save_messaging_cfg(mc)
-    logger.info("messaging: сохранён канал '%s' (type=%s, enabled=%s)",
-                cid, ch_type, entry["enabled"])
+    logger.info(
+        "messaging: сохранён канал '%s' (type=%s, enabled=%s)", cid, ch_type, entry["enabled"]
+    )
     return jsonify({"ok": True, "channel": _messaging_public(entry)})
 
 
@@ -1030,9 +1291,7 @@ def api_messaging_save(channel_id: str):
 def api_messaging_delete(channel_id: str):
     mc = _get_messaging_cfg()
     before = len(mc["channels"])
-    mc["channels"] = [
-        c for c in mc["channels"] if c.get("id") != channel_id
-    ]
+    mc["channels"] = [c for c in mc["channels"] if c.get("id") != channel_id]
     if len(mc["channels"]) == before:
         return jsonify({"error": "канал не найден"}), 404
     _save_messaging_cfg(mc)
@@ -1045,15 +1304,17 @@ def api_messaging_delete(channel_id: str):
 def api_messaging_test(channel_id: str):
     live = _get_live_messaging_manager()
     if live is None:
-        return jsonify({
-            "ok": False,
-            "error": (
-                "MessageManager не активен. Возможные причины: "
-                "1) analytics.autostart=false в YAML; "
-                "2) канал добавлен через UI уже после старта, "
-                "перезапустите viewer.py."
-            ),
-        }), 200
+        return jsonify(
+            {
+                "ok": False,
+                "error": (
+                    "MessageManager не активен. Возможные причины: "
+                    "1) analytics.autostart=false в YAML; "
+                    "2) канал добавлен через UI уже после старта, "
+                    "перезапустите viewer.py."
+                ),
+            }
+        ), 200
     res = live.test_channel(channel_id)
     return jsonify(res), 200
 
@@ -1093,7 +1354,7 @@ def _read_all_events() -> list[dict]:
         return []
     out: list[dict] = []
     try:
-        with open(EVENTS_JSONL, "r", encoding="utf-8") as f:
+        with open(EVENTS_JSONL, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -1154,7 +1415,9 @@ def api_events_delete():
 
     logger.info(
         "admin удалил событие: %s %s %s",
-        found.get("iso"), found.get("camera_name"), found.get("label"),
+        found.get("iso"),
+        found.get("camera_name"),
+        found.get("label"),
     )
     return jsonify({"ok": True})
 
@@ -1186,9 +1449,7 @@ def api_events_clear():
         except Exception:
             logger.exception("не удалось удалить снапшоты")
 
-    logger.info(
-        "admin очистил все события (снапшотов удалено: %d)", removed_snaps
-    )
+    logger.info("admin очистил все события (снапшотов удалено: %d)", removed_snaps)
     return jsonify({"ok": True, "snapshots_removed": removed_snaps})
 
 
@@ -1246,7 +1507,7 @@ def api_set_config():
         url = _normalize_url(s.get("url", ""))
         if not url:
             continue
-        name = (s.get("name") or "").strip() or f"Камера {i+1}"
+        name = (s.get("name") or "").strip() or f"Камера {i + 1}"
         enabled = bool(s.get("enabled", True))
         streams.append({"name": name, "url": url, "enabled": enabled})
     cfg["streams"] = streams
@@ -1261,8 +1522,6 @@ def api_set_config():
         if not isinstance(cams, dict):
             cams = {}
 
-        # FIX: сохраняем analyze_every_n и object_imgsz из старых записей,
-        # UI их пока не редактирует, но они должны остаться.
         default_entry = dict(cams.get("default") or {})
         default_entry.setdefault("enabled", True)
         default_entry.setdefault("plates", True)
@@ -1274,9 +1533,7 @@ def api_set_config():
                 continue
             enabled = bool(sc.get("enabled", True))
             plates = bool(sc.get("plates", False))
-            objects = [
-                str(x) for x in (sc.get("objects") or []) if isinstance(x, str)
-            ]
+            objects = [str(x) for x in (sc.get("objects") or []) if isinstance(x, str)]
 
             sid_key = str(sid)
             old = cams.get(sid_key) or {}
@@ -1322,14 +1579,15 @@ def api_server_test():
     try:
         r = requests.get(f"{url}/api/public/streams", timeout=5)
         if r.status_code != 200:
-            return jsonify({"ok": False,
-                            "error": f"HTTP {r.status_code}"}), 200
+            return jsonify({"ok": False, "error": f"HTTP {r.status_code}"}), 200
         j = r.json()
-        return jsonify({
-            "ok": True,
-            "server_name": j.get("server_name", "VHS-Streamer"),
-            "streams_count": j.get("count", 0),
-        })
+        return jsonify(
+            {
+                "ok": True,
+                "server_name": j.get("server_name", "VHS-Streamer"),
+                "streams_count": j.get("count", 0),
+            }
+        )
     except requests.RequestException as e:
         return jsonify({"ok": False, "error": str(e)}), 200
 
@@ -1343,10 +1601,14 @@ def api_servers_refresh():
     cfg = load_config()
     servers = cfg.get("servers", [])
     if not servers:
-        return jsonify({
-            "ok": True, "streams": [], "errors": [],
-            "message": "Список серверов пуст",
-        })
+        return jsonify(
+            {
+                "ok": True,
+                "streams": [],
+                "errors": [],
+                "message": "Список серверов пуст",
+            }
+        )
 
     all_streams = []
     errors = []
@@ -1362,8 +1624,7 @@ def api_servers_refresh():
             j = r.json()
         except requests.RequestException as e:
             logger.warning("Сервер %s недоступен: %s", srv_url, e)
-            errors.append({"server": srv_name, "url": srv_url,
-                           "error": str(e)})
+            errors.append({"server": srv_name, "url": srv_url, "error": str(e)})
             continue
 
         for st in j.get("streams", []):
@@ -1380,23 +1641,27 @@ def api_servers_refresh():
 
             uid = f"{srv_url}|{st.get('path', '')}"
 
-            all_streams.append({
-                "uid": uid,
-                "server": srv_name,
-                "server_url": srv_url,
-                "name": st.get("name") or st.get("id") or "Поток",
-                "camera_name": st.get("camera_name", ""),
-                "path": st.get("path", ""),
-                "url": chosen["url"],
-                "all_urls": webrtc_urls,
-            })
+            all_streams.append(
+                {
+                    "uid": uid,
+                    "server": srv_name,
+                    "server_url": srv_url,
+                    "name": st.get("name") or st.get("id") or "Поток",
+                    "camera_name": st.get("camera_name", ""),
+                    "path": st.get("path", ""),
+                    "url": chosen["url"],
+                    "all_urls": webrtc_urls,
+                }
+            )
 
-    return jsonify({
-        "ok": True,
-        "streams": all_streams,
-        "errors": errors,
-        "servers_count": len(servers),
-    })
+    return jsonify(
+        {
+            "ok": True,
+            "streams": all_streams,
+            "errors": errors,
+            "servers_count": len(servers),
+        }
+    )
 
 
 # ======================================================================
@@ -1407,18 +1672,20 @@ def api_servers_refresh():
 def api_security_config_get():
     cfg = load_config()
     sec = cfg.get("security", {})
-    return jsonify({
-        "auth_enabled": sec.get("auth_enabled", True),
-        "session_lifetime_hours": sec.get("session_lifetime_hours", 24),
-        "users": [
-            {
-                "username": u.get("username", ""),
-                "password": u.get("password", ""),
-                "role": u.get("role", "admin"),
-            }
-            for u in sec.get("users", [])
-        ],
-    })
+    return jsonify(
+        {
+            "auth_enabled": sec.get("auth_enabled", True),
+            "session_lifetime_hours": sec.get("session_lifetime_hours", 24),
+            "users": [
+                {
+                    "username": u.get("username", ""),
+                    "password": u.get("password", ""),
+                    "role": u.get("role", "admin"),
+                }
+                for u in sec.get("users", [])
+            ],
+        }
+    )
 
 
 @app.route("/api/security/config", methods=["POST"])
@@ -1434,14 +1701,14 @@ def api_security_config_set():
     seen = set()
     for i, u in enumerate(raw_users):
         if not isinstance(u, dict):
-            return jsonify({"error": f"Пользователь #{i+1} — не объект"}), 400
+            return jsonify({"error": f"Пользователь #{i + 1} — не объект"}), 400
 
         username = str(u.get("username", "")).strip()
         password = str(u.get("password", ""))
         role = str(u.get("role", "admin")).strip()
 
         if not username:
-            return jsonify({"error": f"У пользователя #{i+1} пустой логин"}), 400
+            return jsonify({"error": f"У пользователя #{i + 1} пустой логин"}), 400
         if not password:
             return jsonify({"error": f"У пользователя '{username}' пустой пароль"}), 400
         if role not in ("admin", "viewer"):
@@ -1450,11 +1717,13 @@ def api_security_config_set():
             return jsonify({"error": f"Логин '{username}' повторяется"}), 400
 
         seen.add(username)
-        cleaned.append({
-            "username": username,
-            "password": password,
-            "role": role,
-        })
+        cleaned.append(
+            {
+                "username": username,
+                "password": password,
+                "role": role,
+            }
+        )
 
     if not cleaned:
         return jsonify({"error": "Список пользователей не может быть пустым"}), 400
@@ -1481,7 +1750,8 @@ def api_security_config_set():
 
     logger.info(
         "Настройки безопасности обновлены: auth_enabled=%s, пользователей=%d",
-        auth_enabled, len(cleaned),
+        auth_enabled,
+        len(cleaned),
     )
 
     current_username = getattr(g, "user", {}).get("username")
@@ -1490,17 +1760,20 @@ def api_security_config_set():
             session["user"] = {"username": u["username"], "role": u["role"]}
             break
 
-    return jsonify({
-        "ok": True,
-        "users_count": len(cleaned),
-        "auth_enabled": auth_enabled,
-    })
+    return jsonify(
+        {
+            "ok": True,
+            "users_count": len(cleaned),
+            "auth_enabled": auth_enabled,
+        }
+    )
 
 
 @app.route("/api/security/generate_password", methods=["POST"])
 @auth_mod.admin_required
 def api_security_generate_password():
     import secrets
+
     return jsonify({"password": secrets.token_urlsafe(12)})
 
 
@@ -1510,21 +1783,21 @@ def api_security_generate_password():
 @app.route("/api/status")
 def api_status():
     """Публичный — health-check."""
-    return jsonify({
-        "app": {
-            "name": APP_NAME,
-            "version": __version__,
-            "author": __author__,
-        },
-    })
+    return jsonify(
+        {
+            "app": {
+                "name": APP_NAME,
+                "version": __version__,
+                "author": __author__,
+            },
+        }
+    )
 
 
 @app.route("/favicon.ico")
 def favicon():
     try:
-        return send_from_directory(
-            RES_DIR / "static", "favicon.ico", mimetype="image/x-icon"
-        )
+        return send_from_directory(RES_DIR / "static", "favicon.ico", mimetype="image/x-icon")
     except Exception:
         return "", 404
 
@@ -1543,16 +1816,18 @@ _analytics_manager = None
 def _start_embedded_analytics():
     """
     Запускает AnalyticsManager в том же процессе, что и Viewer.
-
-    Условия запуска:
-    - analytics.enabled: true в viewer_config.yaml
-    - analytics.autostart: true (по умолчанию true)
-    - не под Flask reloader (WERKZEUG_RUN_MAIN != "false")
+    ...
     """
     global _analytics_manager
 
     if _analytics_manager is not None:
         return _analytics_manager
+
+    if not _is_setup_complete():
+        logger.info(
+            "embedded analytics: мастер настройки не завершён — аналитика запустится после /setup"
+        )
+        return None
 
     cfg = load_config()
     an = cfg.get("analytics") or {}
@@ -1563,8 +1838,7 @@ def _start_embedded_analytics():
 
     if not an.get("autostart", True):
         logger.info(
-            "embedded analytics: autostart=false — "
-            "запустите `python run_analytics.py` отдельно"
+            "embedded analytics: autostart=false — запустите `python run_analytics.py` отдельно"
         )
         return None
 
@@ -1574,9 +1848,7 @@ def _start_embedded_analytics():
     try:
         from vhs_analytics.bootstrap import build_manager
     except Exception:
-        logger.exception(
-            "embedded analytics: не удалось импортировать vhs_analytics"
-        )
+        logger.exception("embedded analytics: не удалось импортировать vhs_analytics")
         return None
 
     try:
@@ -1590,8 +1862,7 @@ def _start_embedded_analytics():
 
     if manager is None:
         logger.warning(
-            "embedded analytics: build_manager вернул None "
-            "(проверьте analytics.enabled в конфиге)"
+            "embedded analytics: build_manager вернул None (проверьте analytics.enabled в конфиге)"
         )
         return None
 
@@ -1612,6 +1883,7 @@ def _stop_embedded_analytics():
         return
     try:
         from vhs_analytics.bootstrap import stop_manager
+
         stop_manager(_analytics_manager)
         logger.info("embedded analytics: остановлена")
     except Exception:
@@ -1626,15 +1898,23 @@ if __name__ == "__main__":
 
     logger.info("Старт сервера: http://127.0.0.1:8200")
     logger.info("Конфиг: %s", CONFIG_PATH)
-    if auth_on:
-        users_count = len(sec.get("users", []))
-        logger.info("Авторизация: включена (%d пользователей)", users_count)
+
+    if not _is_setup_complete():
+        logger.warning(
+            "ПЕРВЫЙ ЗАПУСК: откройте http://127.0.0.1:8200/setup "
+            "для настройки администратора и Streamer"
+        )
     else:
-        logger.warning("Авторизация: ВЫКЛЮЧЕНА — доступ открыт для всех")
+        if auth_on:
+            users_count = len(sec.get("users", []))
+            logger.info("Авторизация: включена (%d пользователей)", users_count)
+        else:
+            logger.warning("Авторизация: ВЫКЛЮЧЕНА — доступ открыт для всех")
+        _start_embedded_analytics()
 
     import atexit
+
     atexit.register(_stop_embedded_analytics)
-    _start_embedded_analytics()
 
     Timer(1.0, _open_browser).start()
     app.run(host="0.0.0.0", port=8200, debug=False, threaded=True)

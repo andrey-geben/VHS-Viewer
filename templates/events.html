@@ -19,23 +19,6 @@
             margin: 0; font-family: Arial, sans-serif;
             background: var(--bg); color: var(--text);
         }
-        header {
-            display: flex; align-items: center; gap: 16px;
-            padding: 12px 20px; background: var(--panel);
-            border-bottom: 1px solid var(--border);
-        }
-        header h1 { font-size: 1.1em; margin: 0; color: var(--accent); }
-        header nav { display: flex; gap: 14px; margin-left: 20px; }
-        header nav a {
-            color: var(--text); text-decoration: none;
-            padding: 6px 10px; border-radius: 6px;
-            font-size: 0.92em;
-        }
-        header nav a:hover { background: #2a2f37; }
-        header nav a.active { background: #2a6df4; color: #fff; }
-        header .user { margin-left: auto; color: var(--muted); font-size: 0.9em; }
-        header .user b { color: var(--text); }
-
         main { padding: 20px; max-width: 1300px; margin: 0 auto; }
 
         /* ---- Панель фильтров ---- */
@@ -181,6 +164,16 @@
         .cat-animal  { background: var(--cat-animal); }
         .cat-object  { background: var(--cat-object); }
 
+        .label-ru {
+            color: var(--text);
+            font-weight: 600;
+        }
+        .label-en {
+            color: var(--muted);
+            font-size: 0.85em;
+            margin-left: 4px;
+        }
+
         .empty {
             padding: 40px; text-align: center; color: var(--muted);
             background: var(--panel); border-radius: 8px;
@@ -193,26 +186,12 @@
     </style>
 </head>
 <body>
+
+{% include '_nav.html' %}
+
 {% set is_admin = user and user.role == 'admin' %}
-<header>
-    <h1>VHS-Viewer</h1>
-    <nav>
-        <a href="{{ url_for('index') }}">Просмотр</a>
-        <a href="{{ url_for('events_page') }}" class="active">События</a>
-        <a href="{{ url_for('analytics_page') }}">Аналитика</a>
-        {% if user and user.role == 'admin' %}
-        <a href="{{ url_for('relay_page') }}">Реле</a>
-        <a href="{{ url_for('messaging_page') }}">Уведомления</a>
-        {% endif %}
-        <a href="{{ url_for('about_page') }}">О программе</a>
-    </nav>
-    <div class="user">
-        {% if user %}Вы: <b>{{ user.username }}</b> · <a href="{{ url_for('logout') }}" style="color:var(--muted)">выход</a>{% endif %}
-    </div>
-</header>
 
 <main>
-    <!-- ============ ФИЛЬТРЫ ============ -->
     <div class="filters">
         <div class="filter-group">
             <label class="title">Категории</label>
@@ -235,7 +214,7 @@
         <div class="filter-group">
             <label class="title" for="search-input">Поиск</label>
             <input id="search-input" type="text"
-                   placeholder="номер или метка (напр. А798, person)">
+                   placeholder="номер, метка или русское название">
         </div>
 
         <div class="filter-group">
@@ -252,7 +231,6 @@
         </div>
     </div>
 
-    <!-- ============ СТАТУС + АВТООБНОВЛЕНИЕ ============ -->
     <div class="toolbar">
         <label><input id="auto" type="checkbox" checked> автообновление (5с)</label>
         <span class="status" id="status"></span>
@@ -264,6 +242,7 @@
 </main>
 
 <footer>{{ app_footer }} · v{{ version }}</footer>
+
 <script>
 const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
 
@@ -278,9 +257,8 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
 
     if (!contentEl || !statusEl || !limitEl || !autoEl ||
         !cameraSel || !searchEl || !chipsWrap) {
-        // Диагностика: если это сообщение появилось — HTML и JS из разных версий
-        console.error('events.html: не найдены ключевые DOM-элементы. '
-                    + 'Проверьте, что файл собран из Части 1/2 + Части 2/2.');
+        console.error('events.html: не найдены ключевые DOM-элементы. ' +
+                      'Проверьте, что файл собран из Части 1/2 + Части 2/2.');
         return;
     }
 
@@ -290,7 +268,23 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
         plate: '🚗', person: '👤', vehicle: '🚙', animal: '🐻', object: '📦'
     };
 
-    // ---------- утилиты ----------
+    // Русские названия категорий — для чипов и заголовков
+    const CAT_RU = {
+        plate: 'Номера', person: 'Люди', vehicle: 'Транспорт',
+        animal: 'Животные', object: 'Объекты'
+    };
+
+    // Русские названия классов, если в событии нет label_ru
+    // (старые записи в JSONL)
+    const LABEL_RU = {
+        person: 'человек',
+        bicycle: 'велосипед', car: 'автомобиль', motorcycle: 'мотоцикл',
+        bus: 'автобус', truck: 'грузовик', train: 'поезд',
+        bird: 'птица', cat: 'кошка', dog: 'собака',
+        horse: 'лошадь', sheep: 'овца', cow: 'корова',
+        elephant: 'слон', bear: 'медведь', zebra: 'зебра', giraffe: 'жираф'
+    };
+
     function escapeHtml(s) {
         return String(s == null ? '' : s)
             .replace(/&/g, '&amp;')
@@ -304,6 +298,13 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
         const safe = ['plate','person','vehicle','animal','object'].includes(cat)
             ? cat : 'object';
         return '<span class="cat-badge cat-' + safe + '">' + safe + '</span>';
+    }
+
+    function labelRu(event) {
+        // Приоритет: label_ru из JSONL (новые события) → словарь → сырой label
+        if (event.label_ru) return event.label_ru;
+        const lbl = String(event.label || event.plate || '?').toLowerCase();
+        return LABEL_RU[lbl] || event.label || event.plate || '?';
     }
 
     // ---------- фильтры: чипы ----------
@@ -355,10 +356,15 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
                 : '—';
             const conf = (typeof e.confidence === 'number')
                 ? e.confidence.toFixed(2) : '—';
-            const cat = e.category || (e.plate ? 'plate' : 'object');
+            const cat = (e.category || (e.plate ? 'plate' : 'object')).toLowerCase();
             const emoji = CAT_EMOJI[cat] || '📦';
-            const label = e.label || e.plate || '?';
-            const what = emoji + ' ' + escapeHtml(label) + ' ' + catBadge(cat);
+            const ru = labelRu(e);
+            const raw = e.label || e.plate || '';
+            const showEn = raw && raw !== ru && cat !== 'plate';
+
+            const what = emoji + ' <span class="label-ru">' + escapeHtml(ru) + '</span>' +
+                (showEn ? ' <span class="label-en">(' + escapeHtml(raw) + ')</span>' : '') +
+                ' ' + catBadge(cat);
 
             const actionsCell = IS_ADMIN
                 ? '<td class="actions">' +
@@ -537,4 +543,3 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
 </script>
 </body>
 </html>
-

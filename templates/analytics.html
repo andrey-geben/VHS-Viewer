@@ -23,26 +23,6 @@
             color: var(--text);
             overflow: hidden;
         }
-        header {
-            height: 48px;
-            padding: 0 20px;
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            background: var(--panel);
-            border-bottom: 1px solid var(--border);
-        }
-        header h1 { font-size: 1.1em; margin: 0; color: var(--accent); }
-        header nav { display: flex; gap: 14px; margin-left: 20px; }
-        header nav a {
-            color: var(--text); text-decoration: none;
-            padding: 6px 10px; border-radius: 6px;
-            font-size: 0.92em;
-        }
-        header nav a:hover { background: #2a2f37; }
-        header nav a.active { background: #2a6df4; color: #fff; }
-        header .user { margin-left: auto; color: var(--muted); font-size: 0.9em; }
-        header .user b { color: var(--text); }
 
         /* ============ Toolbar ============ */
         .toolbar {
@@ -132,7 +112,6 @@
             text-align: center;
         }
 
-        /* Раскладки */
         #grid.layout-auto {
             grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
             grid-auto-rows: minmax(240px, 1fr);
@@ -151,7 +130,6 @@
             grid-auto-rows: minmax(160px, 1fr);
         }
 
-        /* Компактный режим — без видео, только цифры */
         #grid.compact .an-cell .video-wrap { display: none; }
         #grid.compact .an-cell { min-height: 0; }
         #grid.compact .an-cell .stats-bar { min-height: 44px; }
@@ -263,7 +241,6 @@
             font-style: italic;
         }
 
-        /* Компактный режим — крупный счётчик */
         #grid.compact .an-cell .total-badge {
             font-size: 1.4em;
             padding: 4px 14px;
@@ -303,22 +280,7 @@
 </head>
 <body>
 
-<header>
-    <h1>VHS-Viewer · Аналитика</h1>
-    <nav>
-        <a href="{{ url_for('index') }}">Просмотр</a>
-        <a href="{{ url_for('events_page') }}">События</a>
-        <a href="{{ url_for('analytics_page') }}" class="active">Аналитика</a>
-        {% if user and user.role == 'admin' %}
-        <a href="{{ url_for('relay_page') }}">Реле</a>
-        <a href="{{ url_for('messaging_page') }}">Уведомления</a>
-        {% endif %}
-        <a href="{{ url_for('about_page') }}">О программе</a>
-    </nav>
-    <div class="user">
-        {% if user %}Вы: <b>{{ user.username }}</b> · <a href="{{ url_for('logout') }}" style="color:var(--muted)">выход</a>{% endif %}
-    </div>
-</header>
+{% include '_nav.html' %}
 
 <div class="toolbar">
     <div class="stat">Камер: <b id="stat-cameras">0</b></div>
@@ -396,7 +358,7 @@ window.CURRENT_CONFIG = {{ cfg | tojson }};
 
     let timer = null;
     let lastSummary = null;
-    let lastActive  = null;  // кэш активных камер, чтобы не пересобирать без нужды
+    let lastActive  = null;
 
     // Настройки вида хранятся в localStorage, чтобы не сбрасывались при F5
     const LS_KEY = 'vhs_analytics_view_v1';
@@ -405,13 +367,27 @@ window.CURRENT_CONFIG = {{ cfg | tojson }};
         plate: '🚗', person: '👤', vehicle: '🚙', animal: '🐻', object: '📦'
     };
 
-    // ---------- Утилиты ----------
+    // Русские названия классов, если в событии нет label_ru
+    const LABEL_RU = {
+        person: 'человек',
+        bicycle: 'велосипед', car: 'автомобиль', motorcycle: 'мотоцикл',
+        bus: 'автобус', truck: 'грузовик', train: 'поезд',
+        bird: 'птица', cat: 'кошка', dog: 'собака',
+        horse: 'лошадь', sheep: 'овца', cow: 'корова',
+        elephant: 'слон', bear: 'медведь', zebra: 'зебра', giraffe: 'жираф'
+    };
+
     function escapeHtml(s) {
         return String(s == null ? '' : s)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function labelRu(event) {
+        if (!event) return '?';
+        if (event.label_ru) return event.label_ru;
+        const lbl = String(event.label || event.plate || '?').toLowerCase();
+        return LABEL_RU[lbl] || event.label || event.plate || '?';
     }
 
     function streamIdFromUrl(url) {
@@ -462,7 +438,6 @@ window.CURRENT_CONFIG = {{ cfg | tojson }};
     }
 
     // ---------- Lazy-load iframe через IntersectionObserver ----------
-    // Плитка попадает в видимую область → подгружаем iframe.
     const io = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
             if (!entry.isIntersecting) return;
@@ -483,7 +458,7 @@ window.CURRENT_CONFIG = {{ cfg | tojson }};
             cell.dataset.loaded = '1';
             io.unobserve(cell);
         });
-    }, { root: grid, rootMargin: '200px' });  // 200px — предзагрузка до скролла
+    }, { root: grid, rootMargin: '200px' });
 
     // ---------- Построение списка активных камер ----------
     function buildActiveStreams(cfg) {
@@ -560,8 +535,6 @@ window.CURRENT_CONFIG = {{ cfg | tojson }};
                 '</span>' +
             '</div>';
 
-        // Если плитка сразу видима — IntersectionObserver сработает сам,
-        // но чтобы не ждать, запускаем проверку руками
         io.observe(cell);
         return cell;
     }
@@ -586,12 +559,13 @@ window.CURRENT_CONFIG = {{ cfg | tojson }};
         if (data.last_event) {
             const le = data.last_event;
             const emoji = CAT_EMOJI[le.category] || '📦';
+            const ru = labelRu(le);
             lastEl.innerHTML =
                 '<span class="le-time">' +
                     escapeHtml((le.iso || '').slice(-8)) +
                 '</span>' +
                 '<span class="le-label">' +
-                    emoji + ' ' + escapeHtml(le.label || '?') +
+                    emoji + ' ' + escapeHtml(ru) +
                 '</span>';
         } else {
             lastEl.innerHTML = '<span class="no-events">нет событий</span>';
@@ -610,12 +584,10 @@ window.CURRENT_CONFIG = {{ cfg | tojson }};
             return;
         }
 
-        // Убеждаемся, что layout-класс на месте (класс empty мог его стереть)
         grid.className = '';
         grid.classList.add('layout-' + currentLayout);
         applyCompact(compactChk.checked);
 
-        // Пересобираем только если состав/порядок камер изменился
         const wantedIds = streams.map(s => s.sid);
         const existingIds = Array.from(grid.querySelectorAll('.an-cell')).map(c => c.dataset.sid);
         const sameSet =
@@ -623,25 +595,22 @@ window.CURRENT_CONFIG = {{ cfg | tojson }};
             wantedIds.every((id, i) => existingIds[i] === id);
 
         if (!sameSet) {
-            // Отписываем старые плитки от observer, чтобы не плодить утечки
             grid.querySelectorAll('.an-cell').forEach(c => io.unobserve(c));
             grid.innerHTML = '';
             streams.forEach(s => grid.appendChild(buildCell(s)));
         }
 
-        // Обновляем цифры
         streams.forEach(s => {
             const cell = grid.querySelector('.an-cell[data-sid="' + s.sid + '"]');
             if (!cell) return;
             const data = cams[s.sid] || { total: 0, by_category: {}, last_event: null };
             updateCellStats(cell, data);
 
-            // Небольшой pulse, если пришло новое событие с прошлого раза
             const prev = cell.dataset.lastTs ? parseFloat(cell.dataset.lastTs) : 0;
             const cur = (data.last_event && data.last_event.ts) || 0;
             if (cur > prev && prev > 0) {
                 cell.classList.remove('pulse');
-                void cell.offsetWidth;  // рестарт CSS-анимации
+                void cell.offsetWidth;
                 cell.classList.add('pulse');
                 setTimeout(() => cell.classList.remove('pulse'), 1600);
             }
@@ -689,7 +658,6 @@ window.CURRENT_CONFIG = {{ cfg | tojson }};
         btn.addEventListener('click', () => {
             applyLayout(btn.dataset.layout);
             saveView();
-            // Пересобрать сетку, чтобы пересчитать видимые плитки для lazy-load
             if (lastActive && lastSummary) {
                 renderGrid(orderStreams(lastActive, lastSummary), lastSummary);
             }

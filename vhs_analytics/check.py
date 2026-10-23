@@ -11,8 +11,8 @@ import time
 import cv2
 
 from .config import load_config
-from .stream_client import StreamerClient
 from .detector import ALPRDetector
+from .stream_client import StreamerClient
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("check")

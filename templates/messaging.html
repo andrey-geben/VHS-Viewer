@@ -19,21 +19,6 @@
             margin: 0; font-family: Arial, sans-serif;
             background: var(--bg); color: var(--text);
         }
-        header {
-            display: flex; align-items: center; gap: 16px;
-            padding: 12px 20px; background: var(--panel);
-            border-bottom: 1px solid var(--border);
-        }
-        header h1 { font-size: 1.1em; margin: 0; color: var(--accent); }
-        header nav { display: flex; gap: 14px; margin-left: 20px; }
-        header nav a {
-            color: var(--text); text-decoration: none;
-            padding: 6px 10px; border-radius: 6px; font-size: 0.92em;
-        }
-        header nav a:hover { background: #2a2f37; }
-        header nav a.active { background: #2a6df4; color: #fff; }
-        header .user { margin-left: auto; color: var(--muted); font-size: 0.9em; }
-        header .user b { color: var(--text); }
 
         main { padding: 20px; max-width: 1200px; margin: 0 auto; }
 
@@ -87,6 +72,7 @@
         .channel-card .badge.off { background: rgba(224,82,82,0.15); color: #f16a6a; }
         .channel-card .badge.type-tg  { background: rgba(0,136,204,0.2); color: #4da3ff; }
         .channel-card .badge.type-wh  { background: rgba(176,109,16,0.2); color: #f0ad4e; }
+        .channel-card .badge.type-max { background: rgba(110,90,200,0.25); color: #a892ff; }
         .channel-card .actions {
             margin-left: auto; display: flex; gap: 6px;
         }
@@ -172,17 +158,8 @@
         .grid2 {
             display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px;
         }
-        .grid3 {
-            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px 20px;
-        }
-        .grid4 {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 6px 12px;
-        }
         .hidden { display: none !important; }
 
-        /* Категории */
         .cats-row {
             display: flex; flex-wrap: wrap; gap: 6px;
             padding: 8px 0;
@@ -205,7 +182,6 @@
         .cats-row label.cat-animal.checked  { background: var(--cat-animal); border-color: #e05252; }
         .cats-row label.cat-object.checked  { background: var(--cat-object); border-color: #888; }
 
-        /* Камеры */
         .cams-grid {
             display: grid; grid-template-columns: 1fr 1fr;
             gap: 6px 12px; padding: 10px 12px;
@@ -226,7 +202,6 @@
             display: flex; gap: 8px; margin-bottom: 8px;
         }
 
-        /* Плейсхолдеры */
         .placeholders {
             background: #0a0b0e; padding: 8px 12px;
             border-radius: 4px; border: 1px solid var(--border);
@@ -291,20 +266,8 @@
     </style>
 </head>
 <body>
-<header>
-    <h1>VHS-Viewer · Уведомления</h1>
-    <nav>
-        <a href="{{ url_for('index') }}">Просмотр</a>
-        <a href="{{ url_for('events_page') }}">События</a>
-        <a href="{{ url_for('analytics_page') }}">Аналитика</a>
-        <a href="{{ url_for('relay_page') }}">Реле</a>
-        <a href="{{ url_for('messaging_page') }}" class="active">Уведомления</a>
-        <a href="{{ url_for('about_page') }}">О программе</a>
-    </nav>
-    <div class="user">
-        {% if user %}Вы: <b>{{ user.username }}</b> · <a href="{{ url_for('logout') }}" style="color:var(--muted)">выход</a>{% endif %}
-    </div>
-</header>
+
+{% include '_nav.html' %}
 
 <main>
     <div class="top-bar">
@@ -327,7 +290,6 @@
 
 <footer>{{ app_footer }} · v{{ version }}</footer>
 
-<!-- Модалка -->
 <div class="modal-overlay" id="modal">
     <div class="modal">
         <h2 id="modal-title">Новый канал</h2>
@@ -380,7 +342,6 @@
         </div>
 
         <!-- MAX -->
-
         <div id="block-max" class="hidden">
             <h3>MAX Bot</h3>
             <div class="grid2">
@@ -409,7 +370,6 @@
         </div>
 
         <!-- Webhook -->
-
         <div id="block-webhook" class="hidden">
             <h3>Webhook</h3>
             <div class="grid2">
@@ -476,6 +436,7 @@
             <code>{category}</code>
             <code>{category_rus}</code>
             <code>{label}</code>
+            <code>{label_ru}</code>
             <code>{plate}</code>
             <code>{event_rus}</code>
             <code>{detail}</code>
@@ -489,7 +450,7 @@
         <div class="grid2">
             <label class="check" style="margin-top:12px">
                 <input id="f-attach-snapshot" type="checkbox" checked>
-                Прикреплять снапшот (только Telegram)
+                Прикреплять снапшот (только Telegram/MAX)
             </label>
             <label>
                 Cooldown одного события (сек)
@@ -637,6 +598,18 @@
         }
     }
 
+    function typeBadgeClass(t) {
+        if (t === 'telegram') return 'type-tg';
+        if (t === 'max') return 'type-max';
+        return 'type-wh';
+    }
+
+    function typeLabel(t) {
+        if (t === 'telegram') return 'Telegram';
+        if (t === 'max') return 'MAX';
+        return 'Webhook';
+    }
+
     function renderList() {
         const c = $('list-container');
         if (!currentChannels.length) {
@@ -654,18 +627,26 @@
                   }).join(', ')
                 : 'все камеры';
             const catsText = cats.length
-                ? cats.map(x => '<span class="cat-chip cat-' + esc(x) + '">' + esc(x) + '</span>').join('')
+                ? cats.map(x => '<span class="cat-chip cat-' + esc(x) + '">' +
+                                esc(x) + '</span>').join('')
                 : '<b>все категории</b>';
             const disabled = !ch.enabled ? ' disabled' : '';
             const badge = ch.enabled
                 ? '<span class="badge on">вкл</span>'
                 : '<span class="badge off">выкл</span>';
-            const typeBadge = ch.type === 'telegram'
-                ? '<span class="badge type-tg">Telegram</span>'
-                : '<span class="badge type-wh">Webhook</span>';
-            const target = ch.type === 'telegram'
-                ? 'Chat ID: <b>' + esc(ch.chat_id || '—') + '</b>'
-                : 'URL: <span class="url">' + esc(ch.url || '—') + '</span>';
+            const tBadge = '<span class="badge ' + typeBadgeClass(ch.type) + '">' +
+                           typeLabel(ch.type) + '</span>';
+
+            let target = '';
+            if (ch.type === 'telegram') {
+                target = 'Chat ID: <b>' + esc(ch.chat_id || '—') + '</b>';
+            } else if (ch.type === 'max') {
+                const rt = ch.max_recipient_type === 'chat' ? 'chat_id' : 'user_id';
+                target = rt + ': <b>' + esc(ch.max_recipient_id || '—') + '</b>';
+            } else {
+                target = 'URL: <span class="url">' + esc(ch.url || '—') + '</span>';
+            }
+
             const minConf = (ch.min_confidence != null && ch.min_confidence > 0)
                 ? '≥ ' + Math.round(ch.min_confidence * 100) + '%'
                 : 'любая';
@@ -676,7 +657,7 @@
                     '<div class="head">' +
                         '<span class="name">' + esc(ch.name || ch.id) + '</span>' +
                         '<span class="cid">' + esc(ch.id) + '</span>' +
-                        typeBadge + badge +
+                        tBadge + badge +
                         '<div class="actions">' +
                             '<button class="btn-sm primary" data-act="edit">✎ Редактировать</button>' +
                             '<button class="btn-sm secondary" data-act="test">📨 Тест</button>' +
@@ -717,6 +698,7 @@
         let ch = {
             id: '', name: '', type: 'telegram', enabled: false,
             token: '', chat_id: '', url: '', method: 'POST', timeout: 10,
+            max_token: '', max_recipient_id: '', max_recipient_type: 'user',
             categories: [], cameras: [], min_confidence: 0,
             template: '', attach_snapshot: true, cooldown_sec: 0,
         };
@@ -738,11 +720,15 @@
         $('f-name').value = ch.name || '';
         $('f-type').value = (ch.type || 'telegram').toLowerCase();
         $('f-enabled').checked = !!ch.enabled;
-        $('f-token').value = '';  // всегда пустой при открытии
+        $('f-token').value = '';
         $('f-chat-id').value = ch.chat_id || '';
         $('f-url').value = ch.url || '';
         $('f-method').value = (ch.method || 'POST').toUpperCase();
         $('f-timeout').value = ch.timeout != null ? ch.timeout : 10;
+        $('f-max-token').value = '';
+        $('f-max-recipient-id').value = ch.max_recipient_id || '';
+        $('f-max-recipient-type').value =
+            (ch.max_recipient_type || 'user').toLowerCase();
         $('f-min-conf').value = ch.min_confidence != null ? ch.min_confidence : 0;
         $('f-template').value = ch.template || '';
         $('f-attach-snapshot').checked = ch.attach_snapshot !== false;
@@ -757,7 +743,7 @@
         $('modal').classList.add('active');
     }
 
-        function syncTypeBlocks() {
+    function syncTypeBlocks() {
         const t = $('f-type').value;
         $('block-telegram').classList.toggle('hidden', t !== 'telegram');
         $('block-max').classList.toggle('hidden', t !== 'max');
@@ -786,6 +772,8 @@
             url: $('f-url').value.trim(),
             method: $('f-method').value,
             timeout: parseFloat($('f-timeout').value) || 10,
+            max_recipient_id: $('f-max-recipient-id').value.trim(),
+            max_recipient_type: $('f-max-recipient-type').value,
             categories: collectCats(),
             cameras: Array.from(document.querySelectorAll('#cams-grid .cam-cb:checked'))
                         .map(cb => cb.value),
@@ -796,6 +784,8 @@
         };
         const tok = $('f-token').value;
         if (tok) body.token = tok;
+        const maxTok = $('f-max-token').value;
+        if (maxTok) body.max_token = maxTok;
 
         try {
             const r = await fetch('/api/messaging/' + encodeURIComponent(id), {

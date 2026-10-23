@@ -1,10 +1,165 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
-</head>
-<body>
-$END$
-</body>
-</html>
+{#
+    Универсальная шапка VHS-Viewer.
+    Использование в шаблоне:
+        {% include '_nav.html' %}
+    Активный пункт определяется по request.endpoint.
+    Специфичные для index кнопки (Настройки, Fullscreen, часы) показываются
+    только на главной — через проверку request.endpoint == 'index'.
+#}
+{% set ep = request.endpoint or '' %}
+
+<style>
+    /* Изолированные стили шапки. Префикс vhs-nav- — не конфликтует
+       с существующими стилями шаблонов. */
+    .vhs-nav-header {
+        height: 48px;
+        padding: 0 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        background: #1e2126;
+        border-bottom: 1px solid #2a2f37;
+        font-family: Arial, sans-serif;
+        color: #e8e8e8;
+        position: relative;
+        z-index: 10;
+    }
+    .vhs-nav-brand {
+        font-weight: 700;
+        font-size: 1em;
+        color: #4da3ff;
+        text-decoration: none;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .vhs-nav-brand:hover { opacity: 0.9; }
+    .vhs-nav-brand .vhs-nav-version {
+        font-size: 0.75em;
+        color: #8b96a5;
+        font-weight: 400;
+    }
+
+    .vhs-nav-links {
+        display: flex;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
+    }
+    .vhs-nav-link {
+        color: #cfd6e0;
+        text-decoration: none;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.9em;
+        white-space: nowrap;
+        transition: background-color 0.12s, color 0.12s;
+    }
+    .vhs-nav-link:hover {
+        background: #2a2f37;
+        color: #fff;
+    }
+    .vhs-nav-link.active {
+        background: #2a6df4;
+        color: #fff;
+    }
+
+    .vhs-nav-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+    }
+    .vhs-nav-clock {
+        color: #8b96a5;
+        font-size: 0.85em;
+        margin-right: 4px;
+        white-space: nowrap;
+    }
+    .vhs-nav-user {
+        color: #8b96a5;
+        font-size: 0.85em;
+        padding: 4px 10px;
+        background: #14161a;
+        border-radius: 4px;
+        white-space: nowrap;
+    }
+    .vhs-nav-user b { color: #e8e8e8; }
+    .vhs-nav-user .vhs-nav-role { color: #6cb2ff; font-size: 0.9em; }
+
+    .vhs-nav-btn {
+        background: #2a6df4;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 0.88em;
+        font-family: inherit;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+    }
+    .vhs-nav-btn:hover { opacity: 0.9; }
+    .vhs-nav-btn.secondary { background: #3a4150; }
+
+    @media (max-width: 900px) {
+        .vhs-nav-header { padding: 0 10px; gap: 8px; }
+        .vhs-nav-link { padding: 5px 8px; font-size: 0.85em; }
+        .vhs-nav-clock { display: none; }
+        .vhs-nav-user { display: none; }
+    }
+</style>
+
+<header class="vhs-nav-header">
+    {# Логотип = ссылка на главную. id="app-title" нужен для JS из index.html #}
+    <a href="{{ url_for('index') }}" class="vhs-nav-brand" id="app-title">
+        VHS-Viewer
+        <span class="vhs-nav-version">v{{ version }}</span>
+    </a>
+
+    <nav class="vhs-nav-links">
+        <a href="{{ url_for('index') }}"
+           class="vhs-nav-link{% if ep == 'index' %} active{% endif %}">Просмотр</a>
+        <a href="{{ url_for('events_page') }}"
+           class="vhs-nav-link{% if ep == 'events_page' %} active{% endif %}">События</a>
+        <a href="{{ url_for('analytics_page') }}"
+           class="vhs-nav-link{% if ep == 'analytics_page' %} active{% endif %}">Аналитика</a>
+        {% if user and user.role == 'admin' %}
+        <a href="{{ url_for('relay_page') }}"
+           class="vhs-nav-link{% if ep == 'relay_page' %} active{% endif %}">Реле</a>
+        <a href="{{ url_for('messaging_page') }}"
+           class="vhs-nav-link{% if ep == 'messaging_page' %} active{% endif %}">Уведомления</a>
+        <a href="{{ url_for('hardware_page') }}"
+           class="vhs-nav-link{% if ep == 'hardware_page' %} active{% endif %}">Железо</a>
+        {% endif %}
+        <a href="{{ url_for('about_page') }}"
+           class="vhs-nav-link{% if ep == 'about_page' %} active{% endif %}">О программе</a>
+    </nav>
+
+    <div class="vhs-nav-right">
+        {# Часы — только на главной (там их обновляет JS) #}
+        {% if ep == 'index' %}
+        <span class="vhs-nav-clock" id="clock"></span>
+        <button class="vhs-nav-btn secondary" onclick="toggleFullscreen()"
+                title="Полный экран">⛶</button>
+        {% endif %}
+
+        {% if user %}
+        <span class="vhs-nav-user">
+            <b>{{ user.username }}</b>
+            {% if user.role == 'viewer' %}<span class="vhs-nav-role">(просмотр)</span>{% endif %}
+        </span>
+        {% endif %}
+
+        {# Кнопка «Настройки» — только на главной и только admin #}
+        {% if ep == 'index' and user and user.role == 'admin' %}
+        <button class="vhs-nav-btn" onclick="openSettings()">⚙ Настройки</button>
+        {% endif %}
+
+        <a href="{{ url_for('logout') }}" class="vhs-nav-btn secondary">Выход</a>
+    </div>
+</header>

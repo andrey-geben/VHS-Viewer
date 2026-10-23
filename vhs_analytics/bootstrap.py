@@ -20,10 +20,10 @@ from pathlib import Path
 import yaml
 
 from .config import load_config
-from .manager import AnalyticsManager
 from .event_writer import EventWriter
-from .relay import RelayManager
+from .manager import AnalyticsManager
 from .messaging import MessageManager
+from .relay import RelayManager
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ def _load_root_section(config_path: str, section: str) -> dict:
     """
     log.info("DIAG: читаю секцию '%s' из %s", section, config_path)
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
         if not isinstance(raw, dict):
             log.warning("DIAG: YAML не словарь (%s)", type(raw).__name__)
@@ -46,8 +46,7 @@ def _load_root_section(config_path: str, section: str) -> dict:
             return {}
         r = raw.get(section)
         if not isinstance(r, dict):
-            log.warning("DIAG: '%s' не словарь (%s)",
-                        section, type(r).__name__)
+            log.warning("DIAG: '%s' не словарь (%s)", section, type(r).__name__)
             return {}
         return r
     except FileNotFoundError:
@@ -63,7 +62,7 @@ def build_manager(
     log_dir: str | Path = "logs",
 ) -> AnalyticsManager | None:
     log_dir = Path(log_dir)
-    cfg = load_config(config_path)      # только analytics.*
+    cfg = load_config(config_path)  # только analytics.*
     if not cfg.get("enabled"):
         log.info("analytics disabled in config")
         return None
@@ -91,14 +90,16 @@ def build_manager(
     log.info("DIAG: ========== MessageManager ==========")
     messaging_cfg = _load_root_section(config_path, "messaging")
     msg_mgr: MessageManager | None = None
-    if messaging_cfg and isinstance(messaging_cfg.get("channels"), list) \
-            and messaging_cfg["channels"]:
+    if (
+        messaging_cfg
+        and isinstance(messaging_cfg.get("channels"), list)
+        and messaging_cfg["channels"]
+    ):
         try:
             msg_mgr = MessageManager(messaging_cfg, log_dir=log_dir)
             n = len(msg_mgr.channels)
             en = sum(1 for c in msg_mgr.channels.values() if c.enabled)
-            log.info("DIAG: MessageManager создан: каналов=%d, включено=%d",
-                     n, en)
+            log.info("DIAG: MessageManager создан: каналов=%d, включено=%d", n, en)
         except Exception:
             log.exception("DIAG: MessageManager не создан")
             msg_mgr = None
@@ -112,9 +113,8 @@ def build_manager(
         if tg.get("enabled") and tg.get("token") and tg.get("chat_id"):
             try:
                 from .notifier import TelegramNotifier
-                legacy_notifier = TelegramNotifier(
-                    tg["token"], tg["chat_id"]
-                )
+
+                legacy_notifier = TelegramNotifier(tg["token"], tg["chat_id"])
                 log.info("DIAG: legacy TelegramNotifier включён (fallback)")
             except Exception:
                 log.exception("DIAG: legacy TelegramNotifier не создан")
@@ -145,11 +145,12 @@ def build_manager(
         if relay_mgr is not None and category == "plate" and plate:
             try:
                 triggered = relay_mgr.check_all(
-                    plate, camera_id, camera_name,
+                    plate,
+                    camera_id,
+                    camera_name,
                 )
                 if triggered > 0:
-                    log.info("Relay: сработало %d реле для %s",
-                             triggered, plate)
+                    log.info("Relay: сработало %d реле для %s", triggered, plate)
             except Exception:
                 log.exception("RelayManager.check_all failed")
 
@@ -157,7 +158,9 @@ def build_manager(
         if msg_mgr is not None:
             try:
                 sent = msg_mgr.send_all(
-                    detection, stream, snapshot_path=snapshot_abs,
+                    detection,
+                    stream,
+                    snapshot_path=snapshot_abs,
                 )
                 if sent > 0:
                     log.info("Messaging: отправлено в %d канал(ов)", sent)
@@ -166,16 +169,21 @@ def build_manager(
         elif legacy_notifier is not None:
             # Старый формат сообщения
             emoji_map = {
-                "plate": "🚗", "person": "👤", "vehicle": "🚙",
-                "animal": "🐻", "object": "📦",
+                "plate": "🚗",
+                "person": "👤",
+                "vehicle": "🚙",
+                "animal": "🐻",
+                "object": "📦",
             }
             emoji = emoji_map.get(category, "📦")
             if category == "plate" and plate:
                 msg = f"{emoji} Номер `{plate}` на *{camera_name}* (conf={conf:.2f})"
             else:
                 rus_map = {
-                    "person": "Человек", "vehicle": "Транспорт",
-                    "animal": "Животное", "object": "Объект",
+                    "person": "Человек",
+                    "vehicle": "Транспорт",
+                    "animal": "Животное",
+                    "object": "Объект",
                 }
                 rus = rus_map.get(category, category.capitalize())
                 msg = f"{emoji} {rus} ({label}) на *{camera_name}* (conf={conf:.2f})"
@@ -187,7 +195,10 @@ def build_manager(
         # 4. Лог (краткий)
         log.info(
             "Event: %s %s на *%s* (conf=%.2f)",
-            category, label, camera_name, conf,
+            category,
+            label,
+            camera_name,
+            conf,
         )
 
     manager = AnalyticsManager(
