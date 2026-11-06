@@ -23,3 +23,7 @@ onnxruntime>=1.17
 
 # --- Уведомления ---
 # python-telegram-bot>=20.0   # раскомментируйте, если нужен Telegram
+
+requests>=2.31
+maxapi-sdk>=1.0
+aiohttp>=3.9
