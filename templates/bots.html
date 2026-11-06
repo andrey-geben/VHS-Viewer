@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Боты — VHS-Viewer</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #f5f6f8;
+         color: #1a1a20; margin: 0; padding: 24px; }
+  .container { max-width: 960px; margin: 0 auto; }
+  h1 { margin: 0 0 8px; font-size: 22px; }
+  .hint { color: #666; font-size: 14px; margin-bottom: 24px; }
+  .panel { background: #fff; border-radius: 12px; padding: 20px;
+           margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px; border-bottom: 1px solid #eee; }
+  th { color: #666; font-weight: 500; font-size: 12px;
+       text-transform: uppercase; letter-spacing: .5px; }
+  .status-on  { color: #1a8f4a; font-weight: 500; }
+  .status-off { color: #999; }
+  .btn { padding: 6px 12px; border-radius: 6px; border: 1px solid #ddd;
+         background: #fafafa; cursor: pointer; font-size: 13px; margin-right: 4px; }
+  .btn:hover { background: #f0f0f0; }
+  .btn.primary { background: #0066cc; color: #fff; border-color: #0066cc; }
+  .btn.danger  { background: #fff; color: #c33; border-color: #ecc; }
+  .btn.danger:hover { background: #fee; }
+  .empty { color: #999; text-align: center; padding: 40px; }
+  .form-row { display: grid; grid-template-columns: 160px 1fr;
+              gap: 12px; margin-bottom: 12px; align-items: center; }
+  .form-row label { font-size: 14px; color: #333; }
+  .form-row input, .form-row select, .form-row textarea {
+    padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px;
+    font-size: 14px; font-family: inherit; }
+  .form-row textarea { resize: vertical; min-height: 60px; }
+  .actions { display: flex; gap: 8px; margin-top: 16px; }
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4);
+              align-items: center; justify-content: center; z-index: 100; }
+  .modal-bg.show { display: flex; }
+  .modal { background: #fff; border-radius: 12px; padding: 24px;
+           width: 90%; max-width: 560px; max-height: 90vh; overflow: auto; }
+  .modal h2 { margin: 0 0 16px; font-size: 18px; }
+  .err { color: #c33; font-size: 13px; margin-top: 8px; min-height: 16px; }
+  code { font-family: ui-monospace, Consolas, monospace; background: #f0f0f2;
+         padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🤖 Боты</h1>
+  <div class="hint">
+    Боты мессенджеров для <b>входящих команд</b> (открыть дверь).
+    Исходящие уведомления — на странице <a href="/messaging">/messaging</a>.
+  </div>
+
+  <div class="panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h2 style="margin:0; font-size:16px;">Список ботов</h2>
+      <button class="btn primary" onclick="openForm()">+ Добавить бота</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Тип</th><th>Имя</th><th>Статус</th>
+            <th>Разрешено</th><th>Реле</th><th></th></tr>
+      </thead>
+      <tbody id="bots-body">
+        <tr><td colspan="7" class="empty">Загрузка…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h2 id="modal-title">Новый бот</h2>
+    <div class="form-row">
+      <label>ID</label>
+      <input id="f-id" placeholder="vk_main" maxlength="50">
+    </div>
+    <div class="form-row">
+      <label>Тип</label>
+      <select id="f-type">
+        <option value="vk">VK</option>
+        <option value="max">MAX</option>
+        <option value="telegram">Telegram</option>
+        <option value="whatsapp">WhatsApp</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Имя</label>
+      <input id="f-name" placeholder="VK основной">
+    </div>
+    <div class="form-row">
+      <label>Включён</label>
+      <input id="f-enabled" type="checkbox" style="width:auto;">
+    </div>
+    <div class="form-row">
+      <label>Токен мессенджера</label>
+      <input id="f-token" placeholder="vk1.a... / MAX / TG BotFather" autocomplete="off">
+    </div>
+    <div class="form-row">
+      <label>Разрешённые ID</label>
+      <textarea id="f-allowed" placeholder="123456789,987654321"></textarea>
+    </div>
+    <div class="form-row">
+      <label>ID реле</label>
+      <input id="f-relay" placeholder="default">
+    </div>
+    <div class="err" id="modal-err"></div>
+    <div class="actions">
+      <button class="btn primary" onclick="saveBot()">Сохранить</button>
+      <button class="btn" onclick="closeForm()">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let EDIT_ID = null;
+
+async function load() {
+  const r = await fetch('/api/bots/list');
+  const data = await r.json();
+  const tb = document.getElementById('bots-body');
+  if (!data.instances.length) {
+    tb.innerHTML = '<tr><td colspan="7" class="empty">Ботов пока нет — нажмите «+ Добавить бота»</td></tr>';
+    return;
+  }
+  tb.innerHTML = data.instances.map(b => {
+    const ids = (b.allowed_user_ids || []).join(', ');
+    const cnt = (b.allowed_user_ids || []).length;
+    const status = b.enabled
+      ? '<span class="status-on">● включён</span>'
+      : '<span class="status-off">○ выключен</span>';
+    return `<tr>
+      <td><code>${b.id}</code></td>
+      <td>${b.type}</td>
+      <td>${b.name || ''}</td>
+      <td>${status}</td>
+      <td>${cnt} ${cnt ? '(' + ids.slice(0, 30) + ')' : ''}</td>
+      <td><code>${b.relay_id || 'default'}</code></td>
+      <td style="text-align:right;">
+        <button class="btn" onclick='openForm(${JSON.stringify(b).replace(/'/g, "&#39;")})'>Изм.</button>
+        <button class="btn danger" onclick="delBot('${b.id}')">Удал.</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openForm(bot) {
+  EDIT_ID = bot ? bot.id : null;
+  document.getElementById('modal-title').textContent = bot ? 'Редактирование: ' + bot.id : 'Новый бот';
+  document.getElementById('f-id').value = bot ? bot.id : '';
+  document.getElementById('f-id').disabled = !!bot;
+  document.getElementById('f-type').value = bot ? bot.type : 'vk';
+  document.getElementById('f-name').value = bot ? (bot.name || '') : '';
+  document.getElementById('f-enabled').checked = bot ? !!bot.enabled : true;
+  document.getElementById('f-token').value = '';
+  document.getElementById('f-token').placeholder = bot
+    ? '(оставьте пустым, чтобы не менять)'
+    : 'токен мессенджера';
+  document.getElementById('f-allowed').value = bot
+    ? (bot.allowed_user_ids || []).join(',') : '';
+  document.getElementById('f-relay').value = bot ? (bot.relay_id || 'default') : 'default';
+  document.getElementById('modal-err').textContent = '';
+  document.getElementById('modal').classList.add('show');
+}
+
+function closeForm() {
+  document.getElementById('modal').classList.remove('show');
+}
+
+async function saveBot() {
+  const id = (document.getElementById('f-id').value || '').trim();
+  if (!id) { document.getElementById('modal-err').textContent = 'ID обязателен'; return; }
+  const allowedRaw = document.getElementById('f-allowed').value || '';
+  const allowed = allowedRaw.split(/[,\s]+/).filter(x => x).map(x => parseInt(x)).filter(x => !isNaN(x));
+  const payload = {
+    type: document.getElementById('f-type').value,
+    name: document.getElementById('f-name').value || id,
+    enabled: document.getElementById('f-enabled').checked,
+    allowed_user_ids: allowed,
+    relay_id: document.getElementById('f-relay').value || 'default',
+  };
+  const tok = document.getElementById('f-token').value;
+  if (tok) payload.token = tok;
+
+  const r = await fetch('/api/bots/' + encodeURIComponent(id), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await r.json();
+  if (!r.ok || !data.ok) {
+    document.getElementById('modal-err').textContent = data.error || ('HTTP ' + r.status);
+    return;
+  }
+  closeForm();
+  load();
+}
+
+async function delBot(id) {
+  if (!confirm('Удалить бота ' + id + '?')) return;
+  const r = await fetch('/api/bots/' + encodeURIComponent(id), { method: 'DELETE' });
+  const data = await r.json();
+  if (!r.ok || !data.ok) { alert(data.error || ('HTTP ' + r.status)); return; }
+  load();
+}
+
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>

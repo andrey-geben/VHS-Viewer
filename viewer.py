@@ -12,6 +12,10 @@ VHS-Viewer — компактный веб-клиент для просмотр�
     * Страница уведомлений (/messaging) — Telegram / MAX / webhook.
     * Страница «Железо» (/hardware) — профиль, рекомендации, auto_tune.
     * Встроенная аналитика (autostart) — без отдельного run_analytics.py.
+    * Страница ботов (/bots) — управление ботами для событий аналитики.
+НЕ входит в проект:
+    * Домофон, звонки в квартиры, кнопки «Открыть для звонящего» —
+      это отдельный сервис VHS-Intercom (соседний репозиторий).
 """
 
 import json
@@ -23,6 +27,9 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 from threading import Timer
+
+from dotenv import load_dotenv
+load_dotenv()
 
 import requests
 import yaml
@@ -974,6 +981,48 @@ def api_relay_test(relay_id: str):
     res = live.test_relay(relay_id)
     return jsonify(res), 200
 
+# ======================================================================
+# Bot API: открытие реле для мессенджера MAX
+# Авторизация — по заголовку X-Relay-Token, без сессии (бот не умеет
+# логиниться через форму). Секрет берётся из переменной окружения
+# RELAY_SECRET — та же, что бот передаёт в заголовке.
+# ======================================================================
+@app.route("/api/relay/<relay_id>/open", methods=["POST"])
+def api_relay_open_bot(relay_id: str):
+    expected = os.environ.get("RELAY_SECRET", "")
+    provided = request.headers.get("X-Relay-Token", "")
+    if not expected or provided != expected:
+        logger.warning(
+            "bot: отклонён запрос открытия реле '%s' (неверный или пустой токен)",
+            relay_id,
+        )
+        return jsonify({"error": "unauthorized"}), 401
+
+    live = _get_live_relay_manager()
+    if live is None:
+        return jsonify(
+            {
+                "ok": False,
+                "error": (
+                    "RelayManager не активен. Проверьте: "
+                    "1) setup завершён; "
+                    "2) analytics.autostart=true; "
+                    "3) реле включено (enabled=true)."
+                ),
+            }
+        ), 503
+
+    # RelayManager может иметь метод open(); если нет — используем test_relay.
+    opener = getattr(live, "open", None) or getattr(live, "test_relay")
+    try:
+        res = opener(relay_id)
+    except Exception as e:
+        logger.exception("bot: ошибка открытия реле '%s'", relay_id)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    logger.info("bot: открытие реле '%s' → %s", relay_id, res)
+    return jsonify(res), 200
+# ======================================================================
 
 @app.route("/api/relay/<relay_id>/whitelist/add", methods=["POST"])
 @auth_mod.admin_required
@@ -1345,7 +1394,170 @@ def api_messaging_log():
         logger.exception("не удалось прочитать messages.log")
         return jsonify({"lines": []})
 
+# ======================================================================
+# Bots: управление ботами мессенджеров (входящие команды)
+# ======================================================================
+def _get_bots_cfg() -> dict:
+    raw = _load_root_yaml_section("bots")
+    if not isinstance(raw, dict):
+        raw = {}
+    instances = raw.get("instances")
+    if not isinstance(instances, list):
+        instances = []
+    return {
+        "enabled": bool(raw.get("enabled", True)),
+        "instances": [i for i in instances if isinstance(i, dict) and i.get("id")],
+    }
 
+
+def _save_bots_cfg(bots_cfg: dict):
+    cfg = load_config()
+    cfg["bots"] = bots_cfg
+    save_config(cfg)
+    app.config["VIEWER_CONFIG"] = cfg
+
+
+def _bot_public(b: dict) -> dict:
+    out = dict(b)
+    out.pop("token", None)
+    return out
+
+
+@app.route("/bots")
+@auth_mod.admin_required
+def bots_page():
+    return render_template(
+        "bots.html",
+        user=g.user,
+        app_footer=APP_FOOTER,
+        version=__version__,
+    )
+
+
+@app.route("/api/bots/list")
+@auth_mod.admin_required
+def api_bots_list():
+    bc = _get_bots_cfg()
+    return jsonify({"instances": [_bot_public(i) for i in bc["instances"]]})
+
+
+@app.route("/api/bots/<bot_id>", methods=["GET"])
+@auth_mod.admin_required
+def api_bots_get(bot_id: str):
+    bc = _get_bots_cfg()
+    for i in bc["instances"]:
+        if i.get("id") == bot_id:
+            return jsonify(_bot_public(i))
+    return jsonify({"error": "бот не найден"}), 404
+
+
+@app.route("/api/bots/<bot_id>", methods=["POST"])
+@auth_mod.admin_required
+def api_bots_save(bot_id: str):
+    data = request.get_json(silent=True) or {}
+    bid = str(bot_id or "").strip()
+    if not re.match(r"^[a-zA-Z0-9_\-]{1,50}$", bid):
+        return jsonify({"error": "id: только латиница, цифры, _ и - (до 50)"}), 400
+
+    bc = _get_bots_cfg()
+    existing = None
+    for i in bc["instances"]:
+        if i.get("id") == bid:
+            existing = i
+            break
+
+    entry = dict(existing or {})
+    entry["id"] = bid
+    entry["name"] = str(data.get("name") or entry.get("name") or bid).strip()
+
+    bt = str(data.get("type") or entry.get("type") or "vk").lower()
+    if bt not in ("vk", "max", "telegram", "whatsapp"):
+        bt = "vk"
+    entry["type"] = bt
+    entry["enabled"] = bool(data.get("enabled", entry.get("enabled", False)))
+
+    if "token" in data and data.get("token"):
+        entry["token"] = str(data["token"]).strip()
+    elif "token" not in entry:
+        entry["token"] = ""
+
+    if "allowed_user_ids" in data and isinstance(data["allowed_user_ids"], list):
+        cleaned = []
+        for x in data["allowed_user_ids"]:
+            try:
+                cleaned.append(int(x))
+            except (TypeError, ValueError):
+                pass
+        entry["allowed_user_ids"] = cleaned
+    elif "allowed_user_ids" not in entry:
+        entry["allowed_user_ids"] = []
+
+    entry["relay_id"] = str(
+        data.get("relay_id") or entry.get("relay_id") or "default"
+    ).strip()
+
+    if "extra" in data and isinstance(data["extra"], dict):
+        entry["extra"] = data["extra"]
+    elif "extra" not in entry:
+        entry["extra"] = {}
+
+    if entry["enabled"] and not entry.get("token"):
+        return jsonify({"error": "для включённого бота нужен token"}), 400
+
+    if existing is None:
+        bc["instances"].append(entry)
+    else:
+        idx = bc["instances"].index(existing)
+        bc["instances"][idx] = entry
+
+    _save_bots_cfg(bc)
+    logger.info(
+        "bots: сохранён '%s' (type=%s, enabled=%s)", bid, bt, entry["enabled"]
+    )
+    return jsonify({"ok": True, "bot": _bot_public(entry)})
+
+
+@app.route("/api/bots/<bot_id>", methods=["DELETE"])
+@auth_mod.admin_required
+def api_bots_delete(bot_id: str):
+    bc = _get_bots_cfg()
+    before = len(bc["instances"])
+    bc["instances"] = [i for i in bc["instances"] if i.get("id") != bot_id]
+    if len(bc["instances"]) == before:
+        return jsonify({"error": "бот не найден"}), 404
+    _save_bots_cfg(bc)
+    logger.info("bots: удалён '%s'", bot_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/bots/<bot_id>/config")
+def api_bots_config_for_bot(bot_id: str):
+    """Bot-facing endpoint: возвращает полный конфиг с токеном."""
+    expected = os.environ.get("BOT_CONFIG_SECRET", "")
+    provided = request.headers.get("X-Bot-Token", "")
+    if not expected or provided != expected:
+        logger.warning(
+            "bots: отклонён fetch config '%s' (bad token)", bot_id
+        )
+        return jsonify({"error": "unauthorized"}), 401
+
+    bc = _get_bots_cfg()
+    for i in bc["instances"]:
+        if i.get("id") == bot_id:
+            if not i.get("enabled"):
+                return jsonify({"error": "bot disabled"}), 403
+            return jsonify(
+                {
+                    "id": i["id"],
+                    "type": i["type"],
+                    "name": i.get("name", i["id"]),
+                    "token": i.get("token", ""),
+                    "allowed_user_ids": i.get("allowed_user_ids", []),
+                    "relay_id": i.get("relay_id", "default"),
+                    "extra": i.get("extra", {}),
+                }
+            )
+    return jsonify({"error": "бот не найден"}), 404
 # ======================================================================
 # Управление событиями (только admin)
 # ======================================================================
