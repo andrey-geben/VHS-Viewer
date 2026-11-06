@@ -41,3 +41,19 @@ remote_files.txt
 # Сборки
 VHS-Viewer-*.zip
 *.zip
+
+# ==== секреты ====
+.env
+.env.local
+.env.*.local
+
+# ==== bot/ ====
+bot/venv/
+bot/logs/
+bot/**/__pycache__/
+bot/**/*.pyc
+bot/**/.env.local
+
+# ==== конфиг с секретами (см. viewer_config.yaml.example) ====
+# Если файл уже был в git — оставьте закомментированным до отдельного шага.
+# viewer_config.yaml
