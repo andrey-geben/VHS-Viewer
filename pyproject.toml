@@ -16,7 +16,7 @@ exclude = [".venv", "venv", "build", "dist", "__pycache__"]
 # SIM   — можно упростить код
 # C4    — можно упростить генераторы/списки
 # N     — именование (snake_case и т.п.)
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "N"]
+select = ["E9", "F63", "F7", "F82"]
 
 [tool.ruff.lint.per-file-ignores]
 # В __init__.py импорты часто нужны «просто чтобы были» — не ругаемся на них.

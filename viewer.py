@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import sys
+import time
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -126,9 +127,7 @@ DEFAULT_CONFIG = {
     "security": {
         "auth_enabled": True,
         "session_lifetime_hours": 24,
-        "users": [
-            {"username": "admin", "password": "viewer", "role": "admin"},
-        ],
+        "users": [],
     },
 }
 
@@ -186,20 +185,76 @@ def _normalize_plate(text: str) -> str:
 # ----------------------------------------------------------------------
 # Flask
 # ----------------------------------------------------------------------
+
+SESSION_SECRET_FILE = BASE_DIR / "logs" / ".session_secret"
+
+
+def _load_secret_key() -> str:
+    """Ключ сессий: VIEWER_SECRET из окружения или случайный файл."""
+    from_env = os.environ.get("VIEWER_SECRET", "").strip()
+    if from_env:
+        return from_env
+    try:
+        if SESSION_SECRET_FILE.exists():
+            value = SESSION_SECRET_FILE.read_text(encoding="utf-8").strip()
+            if len(value) >= 32:
+                return value
+        value = __import__("secrets").token_urlsafe(48)
+        SESSION_SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SESSION_SECRET_FILE.write_text(value, encoding="utf-8")
+        try:
+            os.chmod(SESSION_SECRET_FILE, 0o600)
+        except OSError:
+            pass
+        return value
+    except OSError:
+        logger.warning("Не удалось сохранить ключ сессий, использую временный")
+        return __import__("secrets").token_urlsafe(48)
+
+
+def _safe_next(target: str | None, fallback: str) -> str:
+    """Разрешает редирект только на локальный путь (без open redirect)."""
+    value = (target or "").strip()
+    if not value.startswith("/") or value.startswith("//") or "\\" in value:
+        return fallback
+    return value
+
 app = Flask(
     __name__,
     template_folder=str(RES_DIR / "templates"),
 )
-app.secret_key = "vhs-viewer-secret-change-me"
+app.secret_key = _load_secret_key()
 
 _startup_config = load_config()
 app.config["VIEWER_CONFIG"] = _startup_config
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("VIEWER_HTTPS", "") == "1",
+)
 auth_mod.apply_session_lifetime(app, _startup_config)
 
 
 # ======================================================================
 # Аутентификация
 # ======================================================================
+
+
+_LOGIN_ATTEMPTS: dict[str, list[float]] = {}
+_LOGIN_WINDOW = 600
+_LOGIN_LIMIT = 10
+
+
+def _login_rate_limited(key: str) -> bool:
+    now = time.time()
+    attempts = [t for t in _LOGIN_ATTEMPTS.get(key, []) if now - t < _LOGIN_WINDOW]
+    _LOGIN_ATTEMPTS[key] = attempts
+    return len(attempts) >= _LOGIN_LIMIT
+
+
+def _login_failed(key: str) -> None:
+    _LOGIN_ATTEMPTS.setdefault(key, []).append(time.time())
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     sec = _security_cfg()
@@ -208,11 +263,18 @@ def login():
 
     error = None
     if request.method == "POST":
+        client = request.headers.get("X-Forwarded-For", request.remote_addr or "?")
+        client = client.split(",")[0].strip()
+        if _login_rate_limited(client):
+            error = "Слишком много попыток входа. Подождите 10 минут."
+            return render_template("login.html", error=error, footer=APP_FOOTER)
         u = request.form.get("username", "")
         p = request.form.get("password", "")
         if auth_mod.do_login(u, p):
-            nxt = request.args.get("next") or url_for("index")
+            _LOGIN_ATTEMPTS.pop(client, None)
+            nxt = _safe_next(request.args.get("next"), url_for("index"))
             return redirect(nxt)
+        _login_failed(client)
         error = "Неверный логин или пароль"
         logger.warning("Неудачная попытка входа: %s", u)
 
@@ -383,6 +445,18 @@ def _complete_setup(
     if clear_logs:
         _reset_logs_on_setup()
 
+
+
+
+@app.after_request
+def _security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
+    return response
 
 @app.before_request
 def _ensure_setup():

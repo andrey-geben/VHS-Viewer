@@ -1,14 +1,28 @@
 # VHS-Viewer
 
+[![CI](https://github.com/andrey-geben/VHS-Viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/andrey-geben/VHS-Viewer/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
+
 Компактный веб-клиент для просмотра потоков **VHS-Streamer** в браузере.
 
 Показывает сетку WebRTC-трансляций с одного или нескольких серверов
 VHS-Streamer. Автоматически подтягивает список потоков через публичный API,
 позволяет включать/выключать нужные камеры галочками и переключать раскладки.
 
-Не требует авторизации, не пишет в архив — только трансляция.
+Первый запуск — мастер настройки (адрес VHS-Streamer и администратор). Клиент не пишет в архив — только трансляция.
 
 ---
+
+
+## Скриншоты
+
+| Вход | Сетка камер |
+|---|---|
+| ![Вход](docs/screenshots/login.jpg) | ![Просмотр](docs/screenshots/dashboard.jpg) |
+
+| Настройки просмотра | О программе |
+|---|---|
+| ![Настройки](docs/screenshots/settings.jpg) | ![О программе](docs/screenshots/about.jpg) |
 
 ## Возможности
 
@@ -392,6 +406,31 @@ VHS-Viewer/
   сервер видеонаблюдения, источник потоков для этого клиента.
 
 ---
+
+
+## Безопасность
+
+Перед публикацией в сеть прочитайте [SECURITY.md](SECURITY.md): там список
+исправленных проблем и оставшихся рисков (хранение паролей, CSRF, `/setup`,
+HTTPS, SSRF через админские URL). Кратко:
+
+- ключ сессий — `VIEWER_SECRET` или `logs/.session_secret` (не хардкод);
+- пароли по умолчанию удалены, вход ограничен 10 попытками за 10 минут;
+- cookie — `HttpOnly`, `SameSite=Lax`, `Secure` при `VIEWER_HTTPS=1`;
+- для удалённого доступа используйте reverse-proxy с TLS.
+
+## Разработка и тесты
+
+```bash
+python -m pip install -r requirements-dev.txt
+ruff check .
+pytest -q
+```
+
+`requirements-dev.txt` содержит pytest и ruff. GitHub Actions
+(`.github/workflows/ci.yml`) запускает линтер (критические правила),
+проверку синтаксиса и unit-тесты (нормализация URL, безопасный редирект,
+setup-флаг, заголовки безопасности) на каждый push и PR.
 
 ## Лицензия
 
