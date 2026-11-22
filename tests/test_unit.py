@@ -101,3 +101,46 @@ def test_login_redirects_to_setup(client):
     response = client.get("/login")
     assert response.status_code == 302
     assert "/setup" in response.headers["Location"]
+import re
+
+import auth as auth_module
+
+
+def test_password_hash_roundtrip():
+    hashed = auth_module.hash_password("StrongPass123")
+    assert hashed.startswith(("pbkdf2:", "scrypt:"))
+    assert auth_module.verify_password(hashed, "StrongPass123") is True
+    assert auth_module.verify_password(hashed, "WrongPass123") is False
+
+
+def test_legacy_plaintext_password_still_works():
+    assert auth_module.verify_password("legacy-pass", "legacy-pass") is True
+    assert auth_module.verify_password("legacy-pass", "other") is False
+
+
+def _csrf_from(html: str) -> str:
+    match = re.search(r'name="_csrf" value="([^"]+)"', html)
+    assert match, "csrf token not found"
+    return match.group(1)
+
+
+def test_setup_post_without_csrf_is_rejected(client):
+    response = client.post("/setup", data={"streamer_url": "http://x", "username": "a"})
+    assert response.status_code == 403
+
+
+def test_setup_post_with_csrf_reaches_form(client):
+    page = client.get("/setup").get_data(as_text=True)
+    token = _csrf_from(page)
+    response = client.post(
+        "/setup",
+        data={"_csrf": token, "streamer_url": "", "username": ""},
+    )
+    assert response.status_code == 200
+    assert "URL Streamer обязателен" in response.get_data(as_text=True)
+
+
+def test_api_post_without_csrf_is_rejected(client):
+    response = client.post("/api/security/config", json={})
+    assert response.status_code == 403
+

@@ -2,7 +2,7 @@
 Информация о версии и авторе VHS-Viewer.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.2.0"
 __author__ = "Andrew Geben"
 __copyright__ = "Copyright (c) 2026 Andrew Geben"
 __license__ = "Proprietary"

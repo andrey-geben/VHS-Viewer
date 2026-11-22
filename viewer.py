@@ -18,6 +18,7 @@ VHS-Viewer — компактный веб-клиент для просмотр�
       это отдельный сервис VHS-Intercom (соседний репозиторий).
 """
 
+import hmac
 import json
 import logging
 import os
@@ -225,6 +226,92 @@ app = Flask(
 )
 app.secret_key = _load_secret_key()
 
+
+# ----------------------------------------------------------------------
+# CSRF-защита
+# ----------------------------------------------------------------------
+CSRF_HEADER = "X-CSRF-Token"
+CSRF_EXEMPT = (
+    re.compile(r"^/api/relay/[^/]+/open$"),
+    re.compile(r"^/api/bots/[^/]+/config$"),
+)
+
+
+def _csrf_token() -> str:
+    token = session.get("_csrf")
+    if not token:
+        token = __import__("secrets").token_urlsafe(32)
+        session["_csrf"] = token
+    return token
+
+
+def _csrf_exempt(path: str) -> bool:
+    return any(pattern.match(path) for pattern in CSRF_EXEMPT)
+
+
+@app.before_request
+def _csrf_protect():
+    if request.method in ("GET", "HEAD", "OPTIONS", "TRACE"):
+        return None
+    if _csrf_exempt(request.path or ""):
+        return None
+    expected = session.get("_csrf")
+    provided = request.headers.get(CSRF_HEADER) or request.form.get("_csrf", "")
+    if not expected or not provided or not hmac.compare_digest(expected, provided):
+        if request.path.startswith("/api/") or "application/json" in request.headers.get(
+            "Accept", ""
+        ):
+            return jsonify({"error": "csrf", "detail": "invalid csrf token"}), 403
+        return "CSRF token missing or invalid", 403
+    return None
+
+
+@app.context_processor
+def _csrf_context():
+    return {"csrf_token": _csrf_token}
+
+
+CSRF_SCRIPT = """<script>
+(function () {
+  var token = %r;
+  if (!token) { return; }
+  var originalFetch = window.fetch;
+  window.fetch = function (url, options) {
+    options = options || {};
+    var headers = new Headers(options.headers || {});
+    if (!headers.has("X-CSRF-Token")) { headers.set("X-CSRF-Token", token); }
+    options.headers = headers;
+    return originalFetch(url, options);
+  };
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("form").forEach(function (form) {
+      if (form.querySelector("input[name=_csrf]")) { return; }
+      var input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "_csrf";
+      input.value = token;
+      form.appendChild(input);
+    });
+  });
+})();
+</script>"""
+
+
+@app.after_request
+def _csrf_inject(response):
+    if response.mimetype == "text/html" and response.status_code < 400:
+        try:
+            html = response.get_data(as_text=True)
+            if "</body>" in html and "X-CSRF-Token" not in html:
+                token = session.get("_csrf", "")
+                if token:
+                    html = html.replace("</body>", CSRF_SCRIPT % token + "</body>", 1)
+                    response.set_data(html)
+        except RuntimeError:
+            pass
+    return response
+
+
 _startup_config = load_config()
 app.config["VIEWER_CONFIG"] = _startup_config
 app.config.update(
@@ -405,7 +492,11 @@ def _complete_setup(
             "auth_enabled": True,
             "session_lifetime_hours": 24,
             "users": [
-                {"username": username, "password": password, "role": "admin"},
+                {
+                    "username": username,
+                    "password": auth_mod.hash_password(password),
+                    "role": "admin",
+                },
             ],
         },
         "analytics": {
@@ -516,12 +607,14 @@ def setup_page():
 
         if not password:
             errors.append("Пароль обязателен")
-        elif len(password) < 6:
-            errors.append("Пароль: минимум 6 символов")
+        elif len(password) < 10:
+            errors.append("Пароль: минимум 10 символов")
         elif password != password2:
             errors.append("Пароли не совпадают")
         elif password.lower() in ("admin", "viewer", "password", "123456", "change-me"):
             errors.append("Пароль слишком простой, выберите другой")
+        elif not (re.search(r"[^\W\d_]", password) and re.search(r"\d", password)):
+            errors.append("Пароль: минимум 10 символов, буквы и цифры")
 
         if errors:
             error = "; ".join(errors)
@@ -1965,7 +2058,7 @@ def api_security_config_get():
             "users": [
                 {
                     "username": u.get("username", ""),
-                    "password": u.get("password", ""),
+                    "has_password": bool(u.get("password")),
                     "role": u.get("role", "admin"),
                 }
                 for u in sec.get("users", [])
@@ -1983,6 +2076,11 @@ def api_security_config_set():
     if not isinstance(raw_users, list):
         return jsonify({"error": "users должен быть списком"}), 400
 
+    cfg_before = load_config()
+    existing_users = {
+        str(u.get("username", "")): str(u.get("password", ""))
+        for u in (cfg_before.get("security", {}) or {}).get("users", [])
+    }
     cleaned = []
     seen = set()
     for i, u in enumerate(raw_users):
@@ -1996,7 +2094,18 @@ def api_security_config_set():
         if not username:
             return jsonify({"error": f"У пользователя #{i + 1} пустой логин"}), 400
         if not password:
-            return jsonify({"error": f"У пользователя '{username}' пустой пароль"}), 400
+            previous = existing_users.get(username)
+            if not previous:
+                return jsonify(
+                    {"error": f"У пользователя '{username}' пустой пароль"}
+                ), 400
+            password = (
+                previous
+                if auth_mod.is_password_hash(previous)
+                else auth_mod.hash_password(previous)
+            )
+        elif not auth_mod.is_password_hash(password):
+            password = auth_mod.hash_password(password)
         if role not in ("admin", "viewer"):
             return jsonify({"error": f"Недопустимая роль '{role}' у '{username}'"}), 400
         if username in seen:

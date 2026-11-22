@@ -79,6 +79,7 @@
     <h1>VHS-Viewer</h1>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
     <form method="post">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <label>Логин</label>
         <input name="username" autofocus required>
         <label>Пароль</label>

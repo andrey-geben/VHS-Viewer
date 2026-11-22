@@ -145,6 +145,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('setup_page') }}" autocomplete="off">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
 
         <h2>VHS-Streamer</h2>
         <label>
@@ -173,7 +174,7 @@
             <input type="password" name="password2" required minlength="6">
         </label>
         <p class="hint">
-            Минимум 6 символов. Не используйте <code>admin</code>,
+            Минимум 10 символов, буквы и цифры. Не используйте <code>admin</code>,
             <code>viewer</code>, <code>password</code>, <code>123456</code>,
             <code>CHANGE-ME</code>.
         </p>

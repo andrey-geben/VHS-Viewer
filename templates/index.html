@@ -744,13 +744,14 @@ async function saveSettings() {
 // БЕЗОПАСНОСТЬ — управление пользователями
 // =====================================================================
 function renderUserRow(u) {
-    u = u || { username: '', password: '', role: 'admin' };
+    u = u || { username: '', has_password: false, role: 'admin' };
     const tr = document.createElement('tr');
+    const placeholder = u.has_password ? '•••••• (задан, оставьте пустым)' : 'новый пароль';
     tr.innerHTML =
         '<td><input type="text" class="u-username" value="' +
             escapeHtml(u.username) + '" style="width:100%"></td>' +
-        '<td><input type="text" class="u-password" value="' +
-            escapeHtml(u.password) + '" style="width:100%"></td>' +
+        '<td><input type="password" class="u-password" autocomplete="new-password" placeholder="' +
+            placeholder + '" style="width:100%"></td>' +
         '<td><select class="u-role" style="width:100%">' +
             '<option value="admin"' + (u.role === 'admin' ? ' selected' : '') +
                 '>admin</option>' +

@@ -7,9 +7,12 @@
     * если security.auth_enabled: false — авторизация отключена.
 """
 
+import hmac
 import logging
 from datetime import timedelta
 from functools import wraps
+
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from flask import (
     current_app,
@@ -32,12 +35,35 @@ def _security_cfg() -> dict:
     return cfg.get("security", {}) or {}
 
 
+HASH_PREFIXES = ("pbkdf2:", "scrypt:")
+
+
+def hash_password(password: str) -> str:
+    """Возвращает хеш пароля (pbkdf2/scrypt, как в Werkzeug)."""
+    return generate_password_hash(password)
+
+
+def verify_password(stored: str, provided: str) -> bool:
+    """Проверяет пароль: поддерживает хеши и старый открытый формат."""
+    stored = stored or ""
+    if stored.startswith(HASH_PREFIXES):
+        try:
+            return check_password_hash(stored, provided)
+        except (ValueError, TypeError):
+            return False
+    return hmac.compare_digest(stored, provided or "")
+
+
+def is_password_hash(value: str) -> bool:
+    return bool(value) and value.startswith(HASH_PREFIXES)
+
+
 def _find_user(username: str, password: str) -> dict | None:
     sec = _security_cfg()
     if not sec.get("auth_enabled", True):
         return {"username": username or "anonymous", "role": "admin"}
     for u in sec.get("users", []):
-        if u.get("username") == username and u.get("password") == password:
+        if u.get("username") == username and verify_password(u.get("password", ""), password):
             return {
                 "username": u["username"],
                 "role": u.get("role", "admin"),
