@@ -130,6 +130,7 @@
             color: #6cb2ff;
         }
     </style>
+<link rel="stylesheet" href="/static/css/mosaic.css?v=2">
 </head>
 <body>
 <div class="card">
@@ -151,12 +152,18 @@
         <label>
             URL сервера Streamer
             <input type="text" name="streamer_url" value="{{ default_streamer }}"
-                   required placeholder="http://127.0.0.1:8000">
+                   required placeholder="http://127.0.0.1:8100">
+        </label>
+        <label>
+            API-ключ Streamer
+            <input type="password" name="streamer_key" autocomplete="new-password"
+                   placeholder="X-VHS-Key из настроек Streamer">
         </label>
         <p class="hint">
             Адрес VHS-Streamer, с которого Viewer будет брать список камер.
             Если Streamer на другой машине — укажите её IP, например
-            <code>http://192.168.1.10:8000</code>.
+            <code>http://192.168.1.10:8100</code>. Ключ можно добавить позже
+            в настройках Viewer; для нескольких Streamer — по ключу на каждый.
         </p>
 
         <h2>Администратор</h2>
@@ -196,3 +203,4 @@
 </div>
 </body>
 </html>
+

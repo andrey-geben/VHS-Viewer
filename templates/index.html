@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <title>{{ cfg.title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="icon" type="image/x-icon" href="/favicon.ico?v=1">
     <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
     <style>
@@ -26,6 +27,7 @@
         }
         #grid.layout-1x1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
         #grid.layout-2x2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        #grid.layout-3x1 { grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr; }
         #grid.layout-3x3 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; }
         #grid.layout-4x4 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); }
         #grid.layout-auto {
@@ -39,9 +41,16 @@
             overflow: hidden;
             border-radius: 3px;
         }
-        .cam-cell iframe {
+        .cam-cell iframe, .cam-cell video {
             width: 100%; height: 100%;
-            border: 0; display: block;
+            border: 0; display: block; object-fit: contain;
+            background: #000;
+        }
+        .cam-error {
+            position: absolute; left: 8px; right: 8px; bottom: 8px;
+            background: rgba(90,20,25,.92); border: 1px solid #7a3038;
+            color: #ffb3b9; font-size: 11px; padding: 6px 8px;
+            border-radius: 4px; z-index: 3;
         }
         .cam-label {
             position: absolute; top: 6px; left: 6px;
@@ -181,18 +190,249 @@
             background: #14161a; border: 1px dashed #2a2f37;
             border-radius: 4px;
         }
+        /* ===== Оформление главной в стиле VHS-Streamer ===== */
+        :root {
+            --v-bg: #07141d;
+            --v-panel: #0c202b;
+            --v-panel2: #102b37;
+            --v-cyan: #49c6d4;
+            --v-gold: #d3a85a;
+            --v-text: #e8f5f8;
+            --v-muted: #8ba6b2;
+            --v-line: #2b4354;
+        }
+        body {
+            background: var(--v-bg);
+            color: var(--v-text);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            font-family: "Segoe UI", Arial, sans-serif;
+        }
+        .vhs-nav-header {
+            flex: 0 0 48px;
+            background: #08151d !important;
+            border-bottom-color: var(--v-line) !important;
+        }
+        .vhs-nav-link.active { background: #1b3a4a !important; color: var(--v-cyan) !important; }
+        .vhs-nav-brand { color: var(--v-cyan) !important; }
+        .vhs-nav-btn { background: #1d4655 !important; }
+
+        .viewer-head {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 18px 22px 10px;
+            max-width: 1600px;
+            width: 100%;
+            margin: 0 auto;
+        }
+        .viewer-kicker {
+            color: var(--v-gold);
+            font-size: 8.5px;
+            font-weight: 700;
+            letter-spacing: .8px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .viewer-head h1 {
+            margin: 0;
+            color: var(--v-text);
+            font-size: 27px;
+            line-height: 1.05;
+            letter-spacing: .2px;
+        }
+        .viewer-head-actions { display: flex; align-items: center; gap: 8px; }
+        .viewer-btn {
+            background: var(--v-panel2);
+            border: 1px solid var(--v-line);
+            color: var(--v-text);
+            border-radius: 6px;
+            padding: 7px 12px;
+            font-size: 11px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .viewer-btn:hover { border-color: var(--v-cyan); color: var(--v-cyan); }
+        .viewer-statusbar {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            flex-wrap: wrap;
+            width: 100%;
+            max-width: 1600px;
+            margin: 0 auto 10px;
+            padding: 7px 22px;
+            box-sizing: border-box;
+            border: 1px solid var(--v-line);
+            border-radius: 5px;
+            background: rgba(12, 32, 43, .65);
+            color: var(--v-muted);
+            font-size: 9px;
+        }
+        .viewer-statusbar b { color: var(--v-text); font-weight: 600; }
+        .viewer-statusbar .dot { color: var(--v-cyan); }
+
+        #grid {
+            flex: 1 1 auto;
+            min-height: 0;
+            height: auto;
+            gap: 10px;
+            padding: 0 22px 12px;
+            background: transparent;
+            max-width: 1600px;
+            width: 100%;
+            margin: 0 auto;
+        }
+        .cam-cell {
+            border: 1px solid var(--v-line);
+            border-radius: 7px;
+            background: #050d12;
+            box-shadow: 0 8px 24px rgba(0,0,0,.25);
+        }
+        .cam-cell video, .cam-cell iframe { object-fit: contain; }
+        .cam-label {
+            top: auto;
+            bottom: 8px;
+            left: 8px;
+            max-width: calc(100% - 16px);
+            padding: 5px 9px;
+            border-radius: 4px;
+            background: linear-gradient(90deg, rgba(3,12,17,.9), rgba(3,12,17,.55));
+            border-left: 2px solid var(--v-cyan);
+            font-size: 10px;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .cam-error {
+            top: 50%;
+            bottom: auto;
+            left: 50%;
+            right: auto;
+            transform: translate(-50%, -50%);
+            max-width: 80%;
+            text-align: center;
+            border-color: #7a3038;
+        }
+        .cam-empty {
+            color: var(--v-muted);
+            border: 1px dashed var(--v-line);
+            font-size: 11px;
+        }
+
+        .viewer-footer {
+            position: static;
+            flex: 0 0 38px;
+            width: 100%;
+            max-width: 1600px;
+            height: 38px;
+            margin: 0 auto;
+            padding: 0 22px;
+            box-sizing: border-box;
+            background: #061018;
+            border-top: 1px solid var(--v-line);
+            color: var(--v-muted);
+            font-size: 8.5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            z-index: 50;
+        }
+        .viewer-footer a { color: var(--v-muted); text-decoration: none; }
+        .viewer-footer a:hover { color: var(--v-cyan); }
+        .footer-monitor {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            color: var(--v-muted);
+            font-size: 8.5px;
+        }
+        .footer-monitor b { color: var(--v-text); font-weight: 600; }
+        .footer-monitor span { white-space: nowrap; }
+
+        @media (max-width: 900px) {
+            .viewer-head { padding: 12px 12px 8px; }
+            .viewer-head h1 { font-size: 20px; }
+            .viewer-statusbar { margin: 0 auto 8px; padding: 7px 12px; }
+            #grid { padding: 0 12px 8px; }
+            .viewer-footer { padding: 0 12px; }
+            .footer-monitor { display: none; }
+        }
     </style>
 </head>
 <body>
 
 {% include '_nav.html' %}
 
+<div class="viewer-head">
+    <div>
+        <div class="viewer-kicker">Видеонаблюдение</div>
+        <h1>Мозаика камер</h1>
+    </div>
+    <div class="viewer-head-actions">
+        <button class="viewer-btn" type="button" onclick="location.reload()">Обновить</button>
+        <button class="viewer-btn" type="button" onclick="openSettings()">Настройки</button>
+    </div>
+</div>
+
+<div class="viewer-statusbar">
+    <span>Камер: <b id="viewer-cam-count">0</b>/<b id="viewer-cam-total">0</b></span>
+    <span>Потоков: <b id="viewer-stream-count">0</b></span>
+    <span>Раскладка: <b id="viewer-layout">—</b></span>
+    <span>Аналитика: <b id="viewer-analytics-count">0</b></span>
+    <span class="dot">●</span> <span>WHEP</span>
+</div>
+
 <div id="grid"></div>
 
-<footer>
+<footer class="viewer-footer">
     <span>{{ app_footer }}</span>
+    {% if user and user.role == 'admin' %}
+    <div class="footer-monitor" id="viewer-monitor">
+        <span title="Загрузка CPU">CPU <b id="mon-cpu-val">—</b></span>
+        <span title="Использование RAM">RAM <b id="mon-ram-val">—</b></span>
+        <span id="mon-disks-inline" title="Заполнение дисков">Диски: —</span>
+        <span title="Сетевой трафик">Сеть <b id="mon-net-val">—</b></span>
+    </div>
+    {% endif %}
     <a href="/about">О программе</a>
 </footer>
+
+<div class="ptz-overlay" id="ptz-overlay">
+  <div class="ptz-card">
+    <div class="ptz-card-head">
+      <b id="ptz-title">PTZ</b>
+      <button type="button" id="ptz-close" title="Закрыть">✕</button>
+    </div>
+    <div class="ptz-grid">
+      <button type="button" data-ptz-move="-1,1">↖</button>
+      <button type="button" data-ptz-move="0,1">↑</button>
+      <button type="button" data-ptz-move="1,1">↗</button>
+      <button type="button" data-ptz-move="-1,0">←</button>
+      <button type="button" class="ptz-home" data-ptz-home title="Исходное положение">⌂</button>
+      <button type="button" data-ptz-move="1,0">→</button>
+      <button type="button" data-ptz-move="-1,-1">↙</button>
+      <button type="button" data-ptz-move="0,-1">↓</button>
+      <button type="button" data-ptz-move="1,-1">↘</button>
+    </div>
+    <div class="ptz-zoom">
+      <button type="button" data-ptz-zoom="1">＋</button>
+      <button type="button" data-ptz-zoom="-1">−</button>
+    </div>
+    <button type="button" class="ptz-invert" id="ptz-invert">Инверсия: выкл</button>
+    <button type="button" class="ptz-stop" id="ptz-stop">Стоп</button>
+    <div class="ptz-status" id="ptz-status"></div>
+  </div>
+</div>
 
 <!-- ============= МОДАЛКА НАСТРОЕК ============= -->
 <div class="modal-overlay" id="settings-modal">
@@ -206,6 +446,7 @@
         <select id="cfg-layout">
             <option value="1x1">1 × 1 — одна камера</option>
             <option value="2x2">2 × 2 — четыре</option>
+            <option value="3x1">3 × 1 — три в ряд</option>
             <option value="3x3">3 × 3 — девять</option>
             <option value="4x4">4 × 4 — шестнадцать</option>
             <option value="auto">Авто — по размеру окна</option>
@@ -222,9 +463,10 @@
         <table id="servers-table">
             <thead>
                 <tr>
-                    <th style="width:30%">Имя</th>
-                    <th style="width:45%">URL</th>
-                    <th style="width:25%">Действия</th>
+                    <th style="width:20%">Имя</th>
+                    <th style="width:30%">URL</th>
+                    <th style="width:26%">API-ключ Streamer</th>
+                    <th style="width:24%">Действия</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -267,6 +509,29 @@
                 onclick="addStreamRow()" style="margin-top:8px">
             + Добавить поток вручную
         </button>
+
+        <!-- ============ ВНУТРЕННИЙ API ============ -->
+        {% if user and user.role == 'admin' %}
+        <h3>Внутренний API и ключи</h3>
+        <p class="hint">
+            Ключ Viewer используется VHS-Security для чтения
+            <code>/api/integration/state</code> и снимков. Передаётся в заголовке
+            <code>X-VHS-Key</code> (совместимо с <code>X-Ingest-Token</code>).
+            Для каждого Streamer выше указывается свой ключ доступа.
+        </p>
+        <div class="form-row" style="margin-bottom:8px">
+            <label style="min-width:200px">Ключ Viewer для Security</label>
+            <input type="password" id="integration-ingest-key" style="flex:1"
+                   autocomplete="new-password" placeholder="сгенерируйте или вставьте ключ">
+            <button class="btn-sm secondary" type="button" onclick="toggleKeyVisibility('integration-ingest-key')">Показать</button>
+            <button class="btn-sm secondary" type="button" onclick="generateIntegrationKey()">Сгенерировать</button>
+            <button class="btn-sm secondary" type="button" onclick="copyIntegrationKey()">Копировать</button>
+        </div>
+        <p class="hint" style="margin-top:0">
+            Security: <code>VHS_SECURITY_INGEST_TOKEN</code> или поле ключа Viewer
+            в настройках Security. Ключи Streamer: раздел «Серверы VHS-Streamer» выше.
+        </p>
+        {% endif %}
 
         <!-- ============ БЕЗОПАСНОСТЬ ============ -->
         {% if user and user.role == 'admin' %}
@@ -329,8 +594,21 @@
         </div>
     </div>
 </div>
+<script src="/static/js/whep-player.js"></script>
 <script>
     const currentConfig = {{ cfg | tojson }};
+    const VIEWER_IS_ADMIN = {{ 'true' if user and user.role == 'admin' else 'false' }};
+    const VIEWER_CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    let viewerPlayers = [];
+    let viewerPtzCaps = {};
+    let viewerPtzCamera = null;
+    let viewerStops = [];
+    function closeViewerPlayers() {
+        viewerStops.forEach((stop) => { try { stop(); } catch (e) {} });
+        viewerStops = [];
+        viewerPlayers.forEach((p) => { try { p.close(); } catch (e) {} });
+        viewerPlayers = [];
+    }
 
 // =====================================================================
 // Часы (обновляются только если на странице есть #clock — только index)
@@ -346,6 +624,68 @@ function updateClock() {
 }
 setInterval(updateClock, 1000);
 updateClock();
+
+// =====================================================================
+// Мониторинг в подвале: CPU / RAM / диски / сеть
+// =====================================================================
+function viewerStatColor(pct) {
+    if (pct == null) return '#8ba6b2';
+    return pct >= 90 ? '#ff7f7f' : (pct >= 75 ? '#d3a85a' : '#70d2a0');
+}
+
+async function refreshViewerStats() {
+    if (!document.getElementById('mon-cpu-val')) return;
+    try {
+        const r = await fetch('/api/system/stats', {headers: {'Accept': 'application/json'}});
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!d.ok) return;
+
+        const cpu = d.cpu && d.cpu.percent;
+        const cpuEl = document.getElementById('mon-cpu-val');
+        if (cpuEl) {
+            cpuEl.textContent = cpu == null ? '—' : Math.round(cpu) + '%';
+            cpuEl.style.color = viewerStatColor(cpu);
+        }
+
+        const ram = d.ram || {};
+        const ramEl = document.getElementById('mon-ram-val');
+        if (ramEl) {
+            const used = (ram.used_mb || 0) / 1024;
+            const total = (ram.total_mb || 0) / 1024;
+            ramEl.textContent = ram.percent == null ? '—' :
+                Math.round(ram.percent) + '% (' + used.toFixed(1) + '/' + total.toFixed(1) + ' ГБ)';
+            ramEl.style.color = viewerStatColor(ram.percent);
+        }
+
+        const disksEl = document.getElementById('mon-disks-inline');
+        if (disksEl) {
+            const disks = d.disks || [];
+            disksEl.innerHTML = disks.length ? 'Диски: ' + disks.map(dk => {
+                const label = String(dk.label || dk.mount || '?').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+                const pct = Math.round(dk.percent || 0);
+                return label + ': <b style="color:' + viewerStatColor(pct) + '">' + pct + '%</b>';
+            }).join(' · ') : 'Диски: —';
+        }
+
+        const netEl = document.getElementById('mon-net-val');
+        if (netEl) {
+            const net = d.network || {};
+            if (net.recv_mbps == null && net.sent_mbps == null) {
+                netEl.textContent = '—';
+            } else {
+                const down = net.recv_mbps == null ? '—' : Number(net.recv_mbps).toFixed(1);
+                const up = net.sent_mbps == null ? '—' : Number(net.sent_mbps).toFixed(1);
+                netEl.textContent = '↓ ' + down + ' / ↑ ' + up + ' Мбит/с';
+            }
+        }
+    } catch (e) {
+        // мониторинг не должен ронять просмотр
+    }
+}
+
+setTimeout(refreshViewerStats, 500);
+setInterval(refreshViewerStats, 3000);
 
 // =====================================================================
 // Утилиты
@@ -365,15 +705,117 @@ function streamIdFromUrl(url) {
     return parts.length ? parts[parts.length - 1] : '';
 }
 
+function streamRowKey(tbody) {
+    if (!tbody) return '';
+    const uid = tbody.dataset.streamUid;
+    if (uid) return 'uid:' + uid;
+    const url = tbody.querySelector('.st-url')?.value.trim() || '';
+    return 'path:' + streamIdFromUrl(url);
+}
+
+// PTZ: идентификатор камеры в Streamer (3_s1 -> 3).
+function cameraIdForStream(stream) {
+    if (stream && stream.camera_id) return String(stream.camera_id);
+    return streamIdFromUrl(stream && stream.url || '').replace(/_s\d+$/, '');
+}
+
+function applyViewerPtzButtons() {
+    document.querySelectorAll('.cam-cell[data-camera-id]').forEach((cell) => {
+        const cap = viewerPtzCaps[cell.dataset.cameraId];
+        const btn = cell.querySelector('.cam-ptz-btn');
+        if (btn) btn.classList.toggle('available', VIEWER_IS_ADMIN && !!cap);
+    });
+}
+
+async function loadViewerPtzCapabilities(force = false) {
+    if (!VIEWER_IS_ADMIN) return;
+    try {
+        const url = force ? '/api/ptz/capabilities?refresh=1' : '/api/ptz/capabilities';
+        const r = await fetch(url, {headers: {'Accept': 'application/json'}});
+        if (!r.ok) return;
+        const data = await r.json();
+        viewerPtzCaps = data.cameras || {};
+        applyViewerPtzButtons();
+        if (viewerPtzCamera) updateViewerInvertButton();
+        // Streamer мог быть недоступен в момент первой загрузки.
+        if (!Object.keys(viewerPtzCaps).length && !force) {
+            setTimeout(() => loadViewerPtzCapabilities(true), 2000);
+        }
+    } catch (e) { /* панель просто не появится */ }
+}
+
+function setViewerPtzStatus(text) {
+    const el = document.getElementById('ptz-status');
+    if (el) el.textContent = text || '';
+}
+
+function closeViewerPtz() {
+    document.getElementById('ptz-overlay')?.classList.remove('open');
+    viewerPtzCamera = null;
+}
+
+function updateViewerInvertButton() {
+    const btn = document.getElementById('ptz-invert');
+    const cap = viewerPtzCamera ? viewerPtzCaps[viewerPtzCamera] : null;
+    if (!btn) return;
+    const on = !!(cap && cap.invert);
+    btn.classList.toggle('active', on);
+    btn.textContent = 'Инверсия: ' + (on ? 'вкл' : 'выкл');
+}
+
+function openViewerPtz(cameraId, name) {
+    if (!viewerPtzCaps[cameraId]) return;
+    viewerPtzCamera = cameraId;
+    const title = document.getElementById('ptz-title');
+    if (title) title.textContent = 'PTZ · ' + (name || cameraId);
+    setViewerPtzStatus('');
+    updateViewerInvertButton();
+    document.getElementById('ptz-overlay')?.classList.add('open');
+}
+
+async function sendViewerPtz(action, payload) {
+    if (!viewerPtzCamera) return;
+    setViewerPtzStatus('команда...');
+    try {
+        const r = await fetch('/api/ptz/' + encodeURIComponent(viewerPtzCamera) + '/' + action, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': VIEWER_CSRF,
+            },
+            body: JSON.stringify(payload || {}),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + r.status));
+        setViewerPtzStatus('выполнено');
+    } catch (e) {
+        setViewerPtzStatus('ошибка: ' + e.message);
+    }
+}
+
 // =====================================================================
 // Сетка
 // =====================================================================
 function renderGrid(streams, layout) {
+    closeViewerPlayers();
     const grid = document.getElementById('grid');
     grid.className = 'layout-' + layout;
     grid.innerHTML = '';
 
     const visible = (streams || []).filter(s => s.enabled !== false);
+
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+    };
+    setText('viewer-cam-count', visible.length);
+    setText('viewer-cam-total', (streams || []).length);
+    setText('viewer-stream-count', visible.length);
+    const layoutNames = {'1x1': '1×1', '2x2': '2×2', '3x1': '3×1', '3x3': '3×3', '4x4': '4×4', 'auto': 'авто'};
+    setText('viewer-layout', layoutNames[layout] || layout || '—');
+    const acams = (currentConfig.analytics && currentConfig.analytics.cameras) || {};
+    const anc = Object.keys(acams).filter(k => k !== 'default' && acams[k] && acams[k].enabled).length;
+    setText('viewer-analytics-count', anc);
 
     if (visible.length === 0) {
         const div = document.createElement('div');
@@ -386,21 +828,94 @@ function renderGrid(streams, layout) {
     visible.forEach(s => {
         const cell = document.createElement('div');
         cell.className = 'cam-cell';
+        cell.dataset.cameraId = cameraIdForStream(s);
 
         const label = document.createElement('div');
         label.className = 'cam-label';
-        label.textContent = s.name;
+        // В компактной плитке длинное «имя / поток» сокращаем; полный ID — в title.
+        const fullName = String(s.name || s.id || 'Камера');
+        label.textContent = fullName.length > 32 ? fullName.split(' / ')[0] : fullName;
+        label.title = fullName;
         cell.appendChild(label);
 
-        const iframe = document.createElement('iframe');
-        iframe.src = s.url;
-        iframe.setAttribute('allow', 'autoplay; fullscreen');
-        iframe.setAttribute('scrolling', 'no');
-        iframe.setAttribute('frameborder', '0');
-        cell.appendChild(iframe);
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.setAttribute('playsinline', '');
+        cell.appendChild(video);
+
+        const ptzBtn = document.createElement('button');
+        ptzBtn.type = 'button';
+        ptzBtn.className = 'cam-ptz-btn';
+        ptzBtn.textContent = 'PTZ';
+        ptzBtn.title = 'Управление PTZ';
+        ptzBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            openViewerPtz(cell.dataset.cameraId, s.name);
+        });
+        cell.appendChild(ptzBtn);
+
+        const err = document.createElement('div');
+        err.className = 'cam-error';
+        err.hidden = true;
+        cell.appendChild(err);
 
         grid.appendChild(cell);
+
+        if (window.VHSWhep) {
+            let stopped = false;
+            let retryTimer = null;
+            let retryDelay = 2000;
+            const stop = () => {
+                stopped = true;
+                if (retryTimer) clearTimeout(retryTimer);
+                retryTimer = null;
+            };
+            viewerStops.push(stop);
+
+            const scheduleRetry = (message) => {
+                if (stopped || retryTimer) return;
+                err.hidden = false;
+                err.textContent = message || 'Поток потерян, переподключение...';
+                retryTimer = setTimeout(() => {
+                    retryTimer = null;
+                    retryDelay = Math.min(retryDelay * 2, 15000);
+                    start();
+                }, retryDelay);
+            };
+
+            const start = () => {
+                if (stopped) return;
+                window.VHSWhep.connect(video, s.url, {
+                    onState: (state) => {
+                        if (state === 'playing' || state === 'connected') {
+                            err.hidden = true;
+                            err.textContent = '';
+                            retryDelay = 2000;
+                        } else if (state === 'failed' || state === 'disconnected') {
+                            scheduleRetry('Поток потерян, переподключение...');
+                        }
+                    },
+                }).then((player) => {
+                    if (stopped) {
+                        try { player.close(); } catch (e) {}
+                        return;
+                    }
+                    viewerPlayers.push(player);
+                }).catch((error) => {
+                    if (stopped) return;
+                    scheduleRetry('Поток: ' + (error.message || error));
+                });
+            };
+
+            start();
+        } else {
+            err.hidden = false;
+            err.textContent = 'WHEP-клиент не загружен';
+        }
     });
+    applyViewerPtzButtons();
 }
 
 // =====================================================================
@@ -442,14 +957,16 @@ function getAnalyticsForStream(sid) {
 // =====================================================================
 // СЕРВЕРЫ
 // =====================================================================
-function addServerRow(name, url) {
+function addServerRow(name, url, apiKey) {
     const tbody = document.querySelector('#servers-table tbody');
     const tr = document.createElement('tr');
     tr.innerHTML =
         '<td><input type="text" class="srv-name" value="' + escapeHtml(name || '') +
             '" placeholder="Имя (необязательно)" style="width:100%"></td>' +
         '<td><input type="text" class="srv-url" value="' + escapeHtml(url || '') +
-            '" placeholder="http://192.168.1.101:8000" style="width:100%"></td>' +
+            '" placeholder="http://192.168.1.101:8100" style="width:100%"></td>' +
+        '<td><input type="password" class="srv-key" value="' + escapeHtml(apiKey || '') +
+            '" placeholder="X-VHS-Key" autocomplete="new-password" style="width:100%"></td>' +
         '<td>' +
             '<button class="btn-sm secondary" type="button" ' +
                 'onclick="testServer(this)">Проверить</button> ' +
@@ -463,6 +980,7 @@ function addServerRow(name, url) {
 async function testServer(btn) {
     const tr = btn.closest('tr');
     const url = tr.querySelector('.srv-url').value.trim();
+    const apiKey = tr.querySelector('.srv-key') ? tr.querySelector('.srv-key').value.trim() : '';
     const statusEl = tr.querySelector('.srv-status');
     if (!url) {
         statusEl.className = 'status-err';
@@ -475,7 +993,7 @@ async function testServer(btn) {
         const r = await fetch('/api/servers/test', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: url }),
+            body: JSON.stringify({ url: url, api_key: apiKey }),
         });
         const data = await r.json();
         if (data.ok) {
@@ -496,7 +1014,7 @@ async function testServer(btn) {
 // =====================================================================
 // ПОТОКИ — запись = <tbody> с главной строкой + раскрывающейся
 // =====================================================================
-function addStreamRow(name, url, enabled, isNew, analytics) {
+function addStreamRow(name, url, enabled, isNew, analytics, uid) {
     const table = document.getElementById('streams-table');
 
     const sid = streamIdFromUrl(url || '');
@@ -507,6 +1025,7 @@ function addStreamRow(name, url, enabled, isNew, analytics) {
 
     const tbody = document.createElement('tbody');
     tbody.className = 'stream-group';
+    if (uid) tbody.dataset.streamUid = uid;
     if (isNew) tbody.dataset.isNew = '1';
 
     tbody.innerHTML =
@@ -555,6 +1074,7 @@ function addStreamRow(name, url, enabled, isNew, analytics) {
     tbody.querySelector('.st-remove').addEventListener('click', () => {
         tbody.remove();
     });
+    return tbody;
 }
 
 async function refreshStreams() {
@@ -566,7 +1086,7 @@ async function refreshStreams() {
         const r = await fetch('/api/servers/refresh', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
+            body: JSON.stringify({ servers: collectServers() }),
         });
         const data = await r.json();
 
@@ -579,20 +1099,51 @@ async function refreshStreams() {
         const loaded = data.streams || [];
         const errors = data.errors || [];
 
-        const existingUrls = new Set();
+        // Сначала убираем уже накопившиеся дубли: сравниваем по UID,
+        // а для старых строк — по пути потока. URL меняется из-за токена,
+        // поэтому сравнивать полный URL нельзя.
+        const byUid = new Map();
+        const byPath = new Map();
+        let removed = 0;
         document.querySelectorAll('#streams-table tbody.stream-group').forEach(tb => {
-            const u = tb.querySelector('.st-url').value.trim();
-            if (u) existingUrls.add(u);
+            const key = streamRowKey(tb);
+            const pathKey = 'path:' + streamIdFromUrl(tb.querySelector('.st-url')?.value || '');
+            const duplicate = (key.startsWith('uid:') && byUid.has(key)) ||
+                (pathKey !== 'path:' && byPath.has(pathKey));
+            if (duplicate) {
+                tb.remove();
+                removed++;
+                return;
+            }
+            if (key.startsWith('uid:')) byUid.set(key, tb);
+            if (pathKey !== 'path:') byPath.set(pathKey, tb);
         });
 
         let added = 0;
+        let updated = 0;
         loaded.forEach(s => {
-            if (existingUrls.has(s.url)) return;
-            addStreamRow(s.name, s.url, false, true);
+            const uid = s.uid || '';
+            const pathKey = 'path:' + streamIdFromUrl(s.url || s.path || '');
+            let tb = (uid && byUid.get('uid:' + uid)) || byPath.get(pathKey);
+            if (tb) {
+                const urlInput = tb.querySelector('.st-url');
+                if (urlInput && s.url && urlInput.value.trim() !== s.url) {
+                    urlInput.value = s.url;
+                    updated++;
+                }
+                if (uid) tb.dataset.streamUid = uid;
+                if (pathKey !== 'path:') byPath.set(pathKey, tb);
+                return;
+            }
+            tb = addStreamRow(s.name, s.url, false, true, null, uid);
             added++;
+            if (uid) byUid.set('uid:' + uid, tb);
+            if (pathKey !== 'path:') byPath.set(pathKey, tb);
         });
 
         let msg = 'загружено ' + loaded.length + ' потоков, добавлено ' + added;
+        if (updated) msg += ', обновлено ' + updated;
+        if (removed) msg += ', удалено дублей ' + removed;
         if (errors.length > 0) {
             msg += '; ошибки: ' + errors.map(e => e.server).join(', ');
             statusEl.className = 'status-err';
@@ -615,8 +1166,9 @@ function collectServers() {
     document.querySelectorAll('#servers-table tbody tr').forEach(tr => {
         const name = tr.querySelector('.srv-name').value.trim();
         const url = tr.querySelector('.srv-url').value.trim();
+        const apiKey = tr.querySelector('.srv-key') ? tr.querySelector('.srv-key').value.trim() : '';
         if (!url) return;
-        out.push({ name: name || url, url: url });
+        out.push({ name: name || url, url: url, api_key: apiKey });
     });
     return out;
 }
@@ -662,6 +1214,39 @@ function collectAnalyticsCameras() {
 }
 
 // =====================================================================
+// Внутренний API: ключ Viewer
+// =====================================================================
+function toggleKeyVisibility(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+function generateIntegrationKey() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    let bin = '';
+    bytes.forEach(b => { bin += String.fromCharCode(b); });
+    const key = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const el = document.getElementById('integration-ingest-key');
+    if (el) {
+        el.value = key;
+        el.type = 'text';
+    }
+}
+
+async function copyIntegrationKey() {
+    const el = document.getElementById('integration-ingest-key');
+    if (!el || !el.value) return;
+    try {
+        await navigator.clipboard.writeText(el.value);
+    } catch (e) {
+        el.select();
+        document.execCommand('copy');
+    }
+}
+
+// =====================================================================
 // НАСТРОЙКИ — открытие / закрытие
 // =====================================================================
 function openSettings() {
@@ -670,7 +1255,7 @@ function openSettings() {
 
     const srvTbody = document.querySelector('#servers-table tbody');
     srvTbody.innerHTML = '';
-    (currentConfig.servers || []).forEach(s => addServerRow(s.name, s.url));
+    (currentConfig.servers || []).forEach(s => addServerRow(s.name, s.url, s.api_key));
 
     document.querySelectorAll('#streams-table tbody.stream-group')
         .forEach(tb => tb.remove());
@@ -680,6 +1265,11 @@ function openSettings() {
         const an = getAnalyticsForStream(sid);
         addStreamRow(s.name, s.url, s.enabled !== false, false, an);
     });
+
+    const ingestEl = document.getElementById('integration-ingest-key');
+    if (ingestEl) {
+        ingestEl.value = (currentConfig.integration && currentConfig.integration.ingest_key) || '';
+    }
 
     document.getElementById('refresh-status').textContent = '';
 
@@ -701,6 +1291,9 @@ async function saveSettings() {
         servers: collectServers(),
         streams: collectStreams(),
         analytics_cameras: collectAnalyticsCameras(),
+        integration: {
+            ingest_key: (document.getElementById('integration-ingest-key') || {}).value || '',
+        },
     };
 
     // Защита: не даём сохранить пустой список потоков, если до этого он был
@@ -734,6 +1327,8 @@ async function saveSettings() {
         document.title = currentConfig.title;
 
         renderGrid(currentConfig.streams, currentConfig.layout);
+        // После смены 3×3/4×4 заново применяем PTZ-кнопки.
+        loadViewerPtzCapabilities(true);
         closeSettings();
     } catch (e) {
         alert('Не удалось сохранить: ' + e.message);
@@ -863,7 +1458,50 @@ function toggleFullscreen() {
 // Инициализация
 // =====================================================================
 renderGrid(currentConfig.streams, currentConfig.layout);
+loadViewerPtzCapabilities();
 document.title = currentConfig.title || 'VHS-Viewer';
+
+document.getElementById('ptz-close')?.addEventListener('click', closeViewerPtz);
+document.getElementById('ptz-overlay')?.addEventListener('click', (event) => {
+    if (event.target.id === 'ptz-overlay') closeViewerPtz();
+});
+document.querySelectorAll('[data-ptz-move]').forEach((button) => {
+    button.addEventListener('click', () => {
+        const [x, y] = String(button.dataset.ptzMove || '0,0').split(',').map(Number);
+        sendViewerPtz('move', {pan: x, tilt: -y, zoom: 0, duration: 0.35});
+    });
+});
+document.querySelectorAll('[data-ptz-zoom]').forEach((button) => {
+    button.addEventListener('click', () => {
+        const zoom = Number(button.dataset.ptzZoom || 0);
+        sendViewerPtz('move', {pan: 0, tilt: 0, zoom, duration: 0.35});
+    });
+});
+document.querySelectorAll('[data-ptz-home]').forEach((button) => {
+    button.addEventListener('click', () => sendViewerPtz('home', {}));
+});
+document.getElementById('ptz-stop')?.addEventListener('click', () => sendViewerPtz('stop', {}));
+document.getElementById('ptz-invert')?.addEventListener('click', async () => {
+    if (!viewerPtzCamera) return;
+    const cap = viewerPtzCaps[viewerPtzCamera] || {};
+    const next = !cap.invert;
+    await sendViewerPtz('invert', {invert: next});
+    cap.invert = next;
+    updateViewerInvertButton();
+});
+
+// /settings редиректит сюда с ?settings=1 — открываем окно настроек.
+(function openSettingsFromUrl() {
+    const params = new URLSearchParams(location.search);
+    if (params.get('settings') !== '1') return;
+    setTimeout(() => {
+        openSettings();
+        // Убираем параметр, чтобы F5 не открывал окно повторно.
+        params.delete('settings');
+        const qs = params.toString();
+        history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+    }, 150);
+})();
 </script>
 
 </body>

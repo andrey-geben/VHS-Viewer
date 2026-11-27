@@ -2,7 +2,9 @@ title: VHS-Viewer
 layout: 2x2
 servers:
 - name: local
-  url: http://127.0.0.1:8000
+  url: http://127.0.0.1:8100
+  api_key: CHANGE-ME-streamer-key
+# Viewer принимает несколько Streamer: добавьте ещё записи с их URL и ключами.
 streams:
 - name: Встроенная камера / analog_1_s1
   url: http://127.0.0.1:8889/analog_1_s1/
@@ -13,6 +15,11 @@ streams:
 - name: sub_streem / 4floor2_s1
   url: http://127.0.0.1:8889/4floor2_s1/
   enabled: true
+integration:
+  service_name: viewer
+  # Ключ Viewer для VHS-Security: X-VHS-Key / X-Ingest-Token
+  ingest_key: CHANGE-ME-viewer-key
+
 security:
   auth_enabled: true
   session_lifetime_hours: 24
@@ -27,7 +34,7 @@ analytics:
   enabled: true
   autostart: true
   objects_per_camera: false
-  streamer_url: http://127.0.0.1:8000
+  streamer_url: http://127.0.0.1:8100
   rtsp_base: null
   poll_interval: 15
   conf_threshold: 0.5

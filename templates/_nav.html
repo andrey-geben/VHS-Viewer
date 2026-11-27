@@ -8,6 +8,7 @@
 #}
 {% set ep = request.endpoint or '' %}
 
+<link rel="stylesheet" href="/static/css/theme.css?v=4">
 <style>
     /* Изолированные стили шапки. Префикс vhs-nav- — не конфликтует
        с существующими стилями шаблонов. */
@@ -113,6 +114,7 @@
         .vhs-nav-user { display: none; }
     }
 </style>
+<link rel="stylesheet" href="/static/css/mosaic.css?v=2">
 
 <header class="vhs-nav-header">
     {# Логотип = ссылка на главную. id="app-title" нужен для JS из index.html #}
@@ -136,6 +138,8 @@
         <a href="{{ url_for('hardware_page') }}"
            class="vhs-nav-link{% if ep == 'hardware_page' %} active{% endif %}">Железо</a>
         {% endif %}
+        <a href="{{ url_for('integrations.system_page') }}"
+           class="vhs-nav-link{% if ep == 'integrations.system_page' %} active{% endif %}">Система</a>
         <a href="{{ url_for('about_page') }}"
            class="vhs-nav-link{% if ep == 'about_page' %} active{% endif %}">О программе</a>
     </nav>
@@ -160,6 +164,19 @@
         <button class="vhs-nav-btn" onclick="openSettings()">⚙ Настройки</button>
         {% endif %}
 
+        <button id="theme-toggle" class="vhs-nav-btn secondary" type="button" title="Переключить тему">🌙</button>
         <a href="{{ url_for('logout') }}" class="vhs-nav-btn secondary">Выход</a>
     </div>
 </header>
+{% if ep in ('events_page', 'analytics_page', 'relay_page', 'messaging_page') %}
+<div class="page-head">
+    <div class="page-kicker">Видеонаблюдение · VHS-Viewer</div>
+    <h1>
+        {% if ep == 'events_page' %}События
+        {% elif ep == 'analytics_page' %}Аналитика
+        {% elif ep == 'relay_page' %}Реле
+        {% else %}Уведомления{% endif %}
+    </h1>
+</div>
+{% endif %}
+<script src="/static/js/theme.js"></script>

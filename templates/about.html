@@ -32,47 +32,257 @@
         }
         ul { line-height: 1.8; color: #8b96a5; }
     </style>
+<link rel="stylesheet" href="/static/css/mosaic.css?v=2">
+<style>
+    .about-wrap { max-width: 1080px !important; }
+    .about-wrap .card { max-width: 1000px !important; }
+    .about-kicker {
+        color: #d3a85a; font-size: 9px; font-weight: 700;
+        letter-spacing: .9px; text-transform: uppercase; margin-bottom: 5px;
+    }
+    .about-wrap h2 { color: #e8f5f8; font-size: 27px; margin: 0 0 8px; }
+    .about-lead { color: #9db8c4; font-size: 13px; line-height: 1.55; margin: 0 0 20px; }
+    .about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .about-box {
+        background: #0a1b24; border: 1px solid #2b4354;
+        border-radius: 7px; padding: 12px 13px;
+    }
+    .about-box h3 { margin: 0 0 5px; color: #49c6d4; font-size: 12px; }
+    .about-box p { margin: 0; color: #9db8c4; font-size: 10.5px; line-height: 1.45; }
+    .about-box .tag {
+        display: inline-block; margin-top: 7px; padding: 2px 6px;
+        border-radius: 10px; background: rgba(73,198,212,.12);
+        color: #49c6d4; font-size: 8.5px; font-weight: 700;
+    }
+    .about-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+    .about-step {
+        border-left: 2px solid #49c6d4; padding: 5px 0 5px 10px;
+        color: #9db8c4; font-size: 10.5px; line-height: 1.4;
+    }
+    .about-step b { display: block; color: #e8f5f8; font-size: 11px; margin-bottom: 2px; }
+    .about-table { margin-top: 8px; }
+    .about-table th { font-size: 9px; }
+    .about-table td { padding: 7px 8px; font-size: 10.5px; border-bottom: 1px solid #213744; }
+    .about-table td:first-child { color: #e8f5f8; font-weight: 600; width: 27%; }
+    .about-flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-top: 8px; }
+    .about-flow div {
+        background: #102b37; border: 1px solid #2b4354; border-radius: 6px;
+        padding: 9px; color: #9db8c4; font-size: 10px; line-height: 1.35;
+    }
+    .about-flow b { display: block; color: #49c6d4; font-size: 9px; margin-bottom: 3px; }
+    .about-note {
+        margin-top: 14px; padding: 10px 12px; border-left: 2px solid #d3a85a;
+        background: #10252e; color: #b9ced6; font-size: 10.5px; line-height: 1.5;
+    }
+    .about-meta td { font-size: 10.5px; }
+    .back { border: 1px solid #2b4354 !important; }
+    @media (max-width: 700px) {
+        .about-grid, .about-steps, .about-flow { grid-template-columns: 1fr; }
+        .about-wrap { padding: 14px 12px; }
+    }
+</style>
 </head>
-<body>
+<body class="about-page">
+<main class="about-wrap">
 <div class="card">
+    <div class="about-kicker">Видеонаблюдение · VHS-Viewer</div>
     <h2>О программе</h2>
+    <p class="about-lead">
+        VHS-Viewer — веб-клиент и событийный концентратор для VHS-Streamer.
+        Показывает камеры в мозаике через WebRTC, принимает события аналитики
+        и связывает их с внешними управляемыми устройствами.
+    </p>
 
-    <table>
+    <h3>Что умеет</h3>
+    <div class="about-grid">
+        <div class="about-box">
+            <h3>Мозаика и WebRTC</h3>
+            <p>Потоки 16:9, раскладки 1×1…4×4, поиск, полноэкранный режим,
+               автоматическое переподключение. Можно подключить несколько
+               VHS-Streamer — у каждого свой URL и ключ.</p>
+            <span class="tag">просмотр</span>
+        </div>
+        <div class="about-box">
+            <h3>События и снимки</h3>
+            <p>Журнал событий с фильтрацией по камере, категории, номеру и времени.
+               Снимки хранятся рядом с событиями и доступны из карточки.</p>
+            <span class="tag">events / snapshots</span>
+        </div>
+        <div class="about-box">
+            <h3>Аналитика</h3>
+            <p>Детекция объектов YOLO и распознавание номеров (ALPR).
+               Для каждой камеры отдельно задаются объекты, номера и частота анализа.</p>
+            <span class="tag">YOLO · ALPR</span>
+        </div>
+        <div class="about-box">
+            <h3>HTTP-реле</h3>
+            <p>Открытие внешнего устройства по распознанному номеру:
+               шлагбаум, замок, ворота, сирена, свет. GET/POST, закрытие по таймеру.</p>
+            <span class="tag">plate → relay</span>
+        </div>
+        <div class="about-box">
+            <h3>Уведомления</h3>
+            <p>Telegram, MAX и webhook. Фильтры по категории, камере и уверенности;
+               шаблон сообщения, снимок, cooldown от спама.</p>
+            <span class="tag">Telegram · MAX · webhook</span>
+        </div>
+        <div class="about-box">
+            <h3>Боты и API</h3>
+            <p>Боты VK/MAX/Telegram/WhatsApp с белым списком пользователей
+               и командой открытия реле. API Viewer используется VHS-Security.</p>
+            <span class="tag">bots · integration</span>
+        </div>
+    </div>
+
+    <h3>Как настроить</h3>
+    <div class="about-steps">
+        <div class="about-step"><b>01 · Первый вход</b>Мастер <code>/setup</code>: логин, пароль, API-токен.</div>
+        <div class="about-step"><b>02 · Streamer</b>Добавить URL VHS-Streamer и API-токен в настройках.</div>
+        <div class="about-step"><b>03 · Потоки</b>Загрузить список потоков, включить нужные, выбрать раскладку.</div>
+        <div class="about-step"><b>04 · Аналитика</b>Для камеры включить objects/plates и задать частоту анализа.</div>
+        <div class="about-step"><b>05 · Реле</b>URL открытия/закрытия, камеры, белый список номеров, cooldown.</div>
+        <div class="about-step"><b>06 · Уведомления</b>Добавить Telegram/MAX/webhook и проверить тестовой отправкой.</div>
+    </div>
+
+    <h3>Связка модулей VHS</h3>
+    <p class="about-lead" style="font-size:11.5px">
+        Viewer — центральный узел между видео и охраной. Он принимает потоки
+        от одного или нескольких Streamer и отдаёт камеры/события в Security.
+        Все внутренние запросы подписываются заголовком <code>X-VHS-Key</code>
+        (совместимо с <code>X-API-Token</code> и <code>X-Ingest-Token</code>).
+    </p>
+    <table class="about-table">
+        <tr><th>Модуль</th><th>Что настроить</th><th>Ключ</th></tr>
+        <tr>
+            <td>VHS-Streamer</td>
+            <td>Настройки → Безопасность → «Ключ интеграции». Добавить камеры и включить потоки.</td>
+            <td><code>X-VHS-Key</code></td>
+        </tr>
+        <tr>
+            <td>VHS-Viewer</td>
+            <td>Настройки → «Серверы VHS-Streamer»: имя, URL, ключ. Затем «Обновить список потоков».</td>
+            <td>ключ каждого Streamer</td>
+        </tr>
+        <tr>
+            <td>VHS-Viewer</td>
+            <td>Настройки → «Внутренний API и ключи»: ключ Viewer для Security.</td>
+            <td><code>X-VHS-Key</code></td>
+        </tr>
+        <tr>
+            <td>VHS-Security</td>
+            <td>Настройки → «Интеграция VHS»: Viewer URL и ключ Viewer; при необходимости Streamer URL и ключ.</td>
+            <td><code>X-VHS-Key</code></td>
+        </tr>
+    </table>
+
+    <div class="about-note">
+        <b>Несколько Streamer.</b> В настройках Viewer можно добавить любое
+        количество серверов; у каждого свой URL и ключ. Потоки агрегируются,
+        а в имени появляется префикс сервера:
+        <br><br>
+        <code>servers:</code><br>
+        <code>&nbsp;&nbsp;- name: Объект-1 · url: http://192.168.1.10:8100 · api_key: ...</code><br>
+        <code>&nbsp;&nbsp;- name: Объект-2 · url: http://192.168.1.11:8100 · api_key: ...</code>
+    </div>
+
+    <h3>Внутренние эндпоинты</h3>
+    <table class="about-table">
+        <tr><th>Модуль</th><th>Эндпоинт</th><th>Назначение</th></tr>
+        <tr><td>Streamer</td><td><code>/api/integration/streams</code></td><td>камеры и WebRTC-URL</td></tr>
+        <tr><td>Viewer</td><td><code>/api/integration/state</code></td><td>камеры и события для Security</td></tr>
+        <tr><td>Viewer</td><td><code>/api/integration/events</code></td><td>журнал событий</td></tr>
+        <tr><td>Viewer</td><td><code>/api/integration/snapshot/&lt;path&gt;</code></td><td>снимки событий</td></tr>
+        <tr><td>Security</td><td><code>/api/integrations/viewer/events</code></td><td>приём событий Viewer</td></tr>
+    </table>
+    <p class="hint" style="margin-top:8px">
+        Проверка: <code>/api/integration/info</code> у каждого модуля и кнопка
+        «Проверить» в настройках сервера Viewer. Ключи не публикуйте в интернет;
+        удалённые площадки соединяйте через WireGuard/VPN.
+    </p>
+
+    <h3>Событие камеры → внешнее устройство</h3>
+    <div class="about-flow">
+        <div><b>1. КАМЕРА</b>RTSP-поток в VHS-Streamer</div>
+        <div><b>2. АНАЛИТИКА</b>Объект или номер + confidence</div>
+        <div><b>3. ПРАВИЛО</b>Камера, белый список, cooldown</div>
+        <div><b>4. ДЕЙСТВИЕ</b>HTTP-реле, webhook, сообщение</div>
+    </div>
+
+    <h3>Варианты взаимодействия</h3>
+    <table class="about-table">
+        <tr><th>Канал</th><th>Что делает</th><th>Когда срабатывает</th></tr>
+        <tr>
+            <td>HTTP-реле</td>
+            <td>GET/POST на <code>url_open</code>; при заданном <code>url_close</code> — закрытие через N секунд. Заголовки, Basic Auth, таймаут.</td>
+            <td>Только распознанный номер из белого списка, с выбранных камер, с учётом cooldown.</td>
+        </tr>
+        <tr>
+            <td>Webhook</td>
+            <td>POST/GET с JSON <code>{text, event}</code> на URL внешней системы.</td>
+            <td>Любое событие аналитики, подходящее под фильтры канала.</td>
+        </tr>
+        <tr>
+            <td>Telegram / MAX</td>
+            <td>Текст и снимок события в чат или канал.</td>
+            <td>Любое событие аналитики по фильтрам категории/камеры/confidence.</td>
+        </tr>
+        <tr>
+            <td>Бот</td>
+            <td>Команда от пользователя из <code>allowed_user_ids</code> открывает выбранное реле.</td>
+            <td>Ручное управление; не зависит от детекции.</td>
+        </tr>
+        <tr>
+            <td>Integration API</td>
+            <td><code>/api/integration/state</code> и <code>/api/integration/events</code> с <code>X-Ingest-Token</code>.</td>
+            <td>VHS-Security и другие внешние системы читают камеры, события и снимки.</td>
+        </tr>
+    </table>
+
+    <h3>Что можно подключить</h3>
+    <p class="muted">
+        Любое устройство с HTTP-управлением: контроллер шлагбаума или ворот,
+        умное реле, электромагнитный замок, сирена, свет, контроллер доступа,
+        Home Assistant, промышленный шлюз или промежуточный webhook.
+        Viewer не коммутирует 220 В напрямую — нужен внешний контроллер или реле.
+    </p>
+
+    <div class="about-note">
+        <b>Важно:</b> автоматическое открытие по номеру работает только для событий
+        категории <code>plate</code>. Детекция людей, машин и объектов используется
+        в журнале и уведомлениях; для управления реле по ним нужен отдельный
+        webhook-сценарий на стороне внешней системы.
+    </div>
+
+    <h3>Безопасность</h3>
+    <ul>
+        <li>Роли <b>admin</b> и <b>viewer</b>; настройки и реле доступны администратору.</li>
+        <li>CSRF-защита форм и API; сессионная авторизация; отдельный ingest-токен для Security.</li>
+        <li>Белый список пользователей ботов и белый список номеров для реле.</li>
+        <li>Cooldown на реле и уведомления, чтобы событие не открывало устройство повторно.</li>
+        <li>Viewer не публикует порты в интернет; доступ — через локальную сеть или WireGuard.</li>
+    </ul>
+
+    <h3>Технические сведения</h3>
+    <table class="about-meta">
         <tr><td>Название</td><td><b>VHS-Viewer</b></td></tr>
         <tr><td>Версия</td><td><b>{{ info.version }}</b></td></tr>
         <tr><td>Автор</td><td><b>{{ info.author }}</b></td></tr>
         <tr><td>Copyright</td><td>{{ info.copyright }}</td></tr>
         <tr><td>Лицензия</td><td>{{ info.license }}</td></tr>
         <tr><td>Сайт</td><td><a href="{{ info.url }}" target="_blank">{{ info.url }}</a></td></tr>
+        <tr><td>Стек</td><td>Python 3.12, Flask 3.0, OpenCV, YOLO, WebRTC/MediaMTX</td></tr>
+        <tr><td>Интеграции</td><td>VHS-Streamer, VHS-Security, Telegram, MAX, webhook, HTTP-реле</td></tr>
     </table>
 
-    <h3>Назначение</h3>
-    <p class="muted">
-        Компактный веб-клиент для просмотра потоков VHS-Streamer.
-        Показывает сетку WebRTC-потоков в браузере. Без авторизации,
-        без записи — только трансляция.
-    </p>
-
-    <h3>Технологии</h3>
-    <ul>
-        <li>Python 3.12, Flask 3.0</li>
-        <li>WebRTC через MediaMTX</li>
-        <li>PyInstaller — сборка .exe</li>
-    </ul>
-
-    <h3>Лицензионное соглашение</h3>
-    <p class="muted">
-        Программное обеспечение является собственностью автора.
-        Любое копирование, распространение, модификация или использование
-        без письменного разрешения автора запрещены.
-    </p>
-    <p class="muted">
-        ПО предоставляется «как есть», без каких-либо гарантий.
-        Автор не несёт ответственности за любой ущерб, возникший
-        в результате использования программы.
+    <p class="muted" style="margin-top:18px">
+        Программное обеспечение является собственностью автора. Копирование,
+        распространение и модификация без письменного разрешения запрещены.
+        ПО предоставляется «как есть», без гарантий.
     </p>
 
     <a class="back" href="/">← Назад к просмотру</a>
 </div>
+</main>
 </body>
 </html>
+

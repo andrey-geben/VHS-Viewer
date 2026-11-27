@@ -12,6 +12,8 @@ import logging
 from datetime import timedelta
 from functools import wraps
 
+import vhs_sso
+
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from flask import (
@@ -75,7 +77,15 @@ def _current_user() -> dict | None:
     sec = _security_cfg()
     if not sec.get("auth_enabled", True):
         return {"username": "anonymous", "role": "admin"}
-    return session.get("user")
+    user = session.get("user")
+    if user:
+        return user
+    sso_user = vhs_sso.read((sec.get("sso_secret") or "").strip())
+    if sso_user:
+        user = {"username": sso_user["username"], "role": sso_user.get("role", "admin")}
+        session["user"] = user
+        return user
+    return None
 
 
 # ----------------------------------------------------------------------

@@ -2,12 +2,14 @@
 
 import json
 import logging
+import os
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
 
 import cv2
+import requests
 
 log = logging.getLogger(__name__)
 
@@ -89,4 +91,30 @@ class EventWriter:
             except Exception:
                 log.exception("не удалось записать событие в JSONL")
 
+        # Передача события в VHS-Security. Не блокируем аналитику сетью.
+        if os.environ.get("VHS_SECURITY_EVENTS_URL"):
+            threading.Thread(
+                target=self._forward_security, args=(event,), daemon=True,
+            ).start()
+
         return snapshot_rel
+
+    @staticmethod
+    def _forward_security(event: dict) -> None:
+        url = os.environ.get("VHS_SECURITY_EVENTS_URL", "").strip()
+        token = os.environ.get("VHS_SECURITY_INGEST_TOKEN", "").strip()
+        if not url:
+            return
+        try:
+            requests.post(
+                url,
+                json=event,
+                headers={
+                    "X-VHS-Key": token,
+                    "X-VHS-Service": "viewer",
+                    "X-Ingest-Token": token,
+                },
+                timeout=2,
+            )
+        except Exception as exc:
+            log.debug("VHS-Security event forward failed: %s", exc)

@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import re
+from urllib.parse import urlsplit
 import sys
 import time
 import webbrowser
@@ -35,6 +36,11 @@ load_dotenv()
 
 import requests
 import yaml
+
+try:
+    import psutil
+except ImportError:  # мониторинг не должен ломать Viewer
+    psutil = None
 from flask import (
     Flask,
     g,
@@ -130,6 +136,10 @@ DEFAULT_CONFIG = {
         "session_lifetime_hours": 24,
         "users": [],
     },
+    "integration": {
+        "ingest_key": "",
+        "service_name": "viewer",
+    },
 }
 
 
@@ -147,6 +157,14 @@ def load_config() -> dict:
             cfg["streams"] = []
         if not isinstance(cfg.get("security"), dict):
             cfg["security"] = dict(DEFAULT_CONFIG["security"])
+        if not isinstance(cfg.get("integration"), dict):
+            cfg["integration"] = dict(DEFAULT_CONFIG["integration"])
+        for srv in cfg.get("servers", []):
+            if isinstance(srv, dict):
+                srv["api_key"] = str(srv.get("api_key") or "").strip()
+        _ingest_key = str(cfg["integration"].get("ingest_key") or "").strip()
+        if _ingest_key:
+            os.environ["VHS_SECURITY_INGEST_TOKEN"] = _ingest_key
         return cfg
     except Exception as e:
         logger.error("Ошибка чтения конфига: %s", e)
@@ -176,6 +194,50 @@ def _normalize_server_url(url: str) -> str:
     if not url.startswith(("http://", "https://")):
         url = "http://" + url
     return url.rstrip("/")
+
+
+def _server_key(server: dict) -> str:
+    """Ключ Streamer для конкретного подключения."""
+    return str((server or {}).get("api_key") or "").strip()
+
+
+def _vhs_headers(key: str) -> dict:
+    """Единый внутренний заголовок + совместимые алиасы."""
+    key = (key or "").strip()
+    if not key:
+        return {}
+    return {
+        "X-VHS-Key": key,
+        "X-VHS-Service": "viewer",
+        "X-API-Token": key,
+    }
+
+
+def _get_streamer_streams(server: dict, timeout: float = 6.0) -> list[dict]:
+    """Потоки одного Streamer: при ключе — integration API, иначе public."""
+    url = _normalize_server_url((server or {}).get("url", ""))
+    if not url:
+        return []
+    key = _server_key(server)
+    headers = _vhs_headers(key)
+    endpoints = ["/api/integration/streams", "/api/public/streams"] if key else ["/api/public/streams"]
+    last_error = None
+    for endpoint in endpoints:
+        try:
+            response = requests.get(url + endpoint, headers=headers, timeout=timeout)
+            if response.status_code == 401 and endpoint.startswith("/api/integration"):
+                last_error = "HTTP 401: неверный ключ Streamer"
+                continue
+            if not response.ok:
+                last_error = f"HTTP {response.status_code}"
+                continue
+            data = response.json() or {}
+            streams = data.get("streams") or []
+            if isinstance(streams, list):
+                return [s for s in streams if isinstance(s, dict)]
+        except (requests.RequestException, ValueError) as exc:
+            last_error = str(exc)
+    raise RuntimeError(last_error or "Streamer не вернул потоки")
 
 
 def _normalize_plate(text: str) -> str:
@@ -234,6 +296,8 @@ CSRF_HEADER = "X-CSRF-Token"
 CSRF_EXEMPT = (
     re.compile(r"^/api/relay/[^/]+/open$"),
     re.compile(r"^/api/bots/[^/]+/config$"),
+    # Внутренний PTZ: Security → Viewer, авторизация по X-VHS-Key.
+    re.compile(r"^/api/integration/ptz/"),
 )
 
 
@@ -275,6 +339,7 @@ CSRF_SCRIPT = """<script>
 (function () {
   var token = %r;
   if (!token) { return; }
+  window.CSRF_TOKEN = token;
   var originalFetch = window.fetch;
   window.fetch = function (url, options) {
     options = options || {};
@@ -302,8 +367,10 @@ def _csrf_inject(response):
     if response.mimetype == "text/html" and response.status_code < 400:
         try:
             html = response.get_data(as_text=True)
-            if "</body>" in html and "X-CSRF-Token" not in html:
-                token = session.get("_csrf", "")
+            if "</body>" in html and "window.CSRF_TOKEN" not in html:
+                # Токен нужен и при входе через SSO/прямой POST: до этого
+                # session["_csrf"] мог не создаваться, и WHEP получал 403 csrf.
+                token = _csrf_token()
                 if token:
                     html = html.replace("</body>", CSRF_SCRIPT % token + "</body>", 1)
                     response.set_data(html)
@@ -315,11 +382,14 @@ def _csrf_inject(response):
 _startup_config = load_config()
 app.config["VIEWER_CONFIG"] = _startup_config
 app.config.update(
+    SESSION_COOKIE_NAME="vhs_viewer_session",
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("VIEWER_HTTPS", "") == "1",
 )
 auth_mod.apply_session_lifetime(app, _startup_config)
+from integration_api import integration_bp
+app.register_blueprint(integration_bp)
 
 
 # ======================================================================
@@ -360,7 +430,13 @@ def login():
         if auth_mod.do_login(u, p):
             _LOGIN_ATTEMPTS.pop(client, None)
             nxt = _safe_next(request.args.get("next"), url_for("index"))
-            return redirect(nxt)
+            response = redirect(nxt)
+            sec = _security_cfg()
+            user = session.get("user") or {}
+            return auth_mod.vhs_sso.set_cookie(
+                response, (sec.get("sso_secret") or "").strip(),
+                user.get("username", u), user.get("role", "admin"),
+            )
         _login_failed(client)
         error = "Неверный логин или пароль"
         logger.warning("Неудачная попытка входа: %s", u)
@@ -375,7 +451,8 @@ def login():
 @app.route("/logout")
 def logout():
     auth_mod.do_logout()
-    return redirect(url_for("login"))
+    response = redirect(url_for("login"))
+    return auth_mod.vhs_sso.clear_cookie(response)
 
 
 def _security_cfg():
@@ -386,10 +463,52 @@ def _security_cfg():
 # ======================================================================
 # Главная
 # ======================================================================
+def _enrich_stream_urls(cfg: dict) -> dict:
+    """Подставляет WebRTC URL из всех Streamer; конфиг на диске не меняет."""
+    servers = [s for s in (cfg.get("servers") or []) if isinstance(s, dict) and s.get("url")]
+    if not servers:
+        base = (os.environ.get("VHS_STREAMER_URL") or "").strip().rstrip("/")
+        key = (os.environ.get("VHS_STREAMER_API_TOKEN") or "").strip()
+        if base and key:
+            servers = [{"name": "env", "url": base, "api_key": key}]
+
+    by_origin_path = {}
+    by_path = {}
+    for srv in servers:
+        srv_origin = urlsplit(_normalize_server_url(srv.get("url", ""))).netloc
+        try:
+            streams = _get_streamer_streams(srv, timeout=4)
+        except Exception:
+            continue
+        for item in streams:
+            path = str(item.get("path") or "").rstrip("/")
+            url = str(item.get("webrtc_url") or "")
+            if path and url:
+                by_origin_path[(srv_origin, path)] = url
+                # запасной путь — только если путь уникален
+                if path in by_path:
+                    by_path[path] = None
+                else:
+                    by_path[path] = url
+
+    for stream in cfg.get("streams", []):
+        current = str(stream.get("url") or "")
+        if not current:
+            continue
+        parsed = urlsplit(current)
+        path = parsed.path.rstrip("/")
+        replacement = by_origin_path.get((parsed.netloc, path))
+        if replacement is None:
+            replacement = by_path.get(path)
+        if replacement:
+            stream["url"] = replacement
+    return cfg
+
+
 @app.route("/")
 @auth_mod.login_required
 def index():
-    cfg = load_config()
+    cfg = _enrich_stream_urls(load_config())
     return render_template(
         "index.html",
         cfg=cfg,
@@ -398,6 +517,190 @@ def index():
         app_footer=APP_FOOTER,
         user=g.user,
     )
+
+
+def _public_ptz_caps(force: bool = False) -> dict:
+    """Возможности без служебного ключа Streamer."""
+    result = {}
+    for cam_id, info in _ptz_capabilities(force).items():
+        item = {k: v for k, v in info.items() if k != "server_key"}
+        result[str(cam_id)] = item
+    return result
+
+
+@app.get("/api/ptz/capabilities")
+@auth_mod.login_required
+def api_ptz_capabilities():
+    force = request.args.get("refresh") in ("1", "true", "yes")
+    return jsonify({"cameras": _public_ptz_caps(force)})
+
+
+@app.post("/api/ptz/<camera_id>/<path:action>")
+@auth_mod.admin_required
+def api_ptz_command(camera_id: str, action: str):
+    status, body = _ptz_request(camera_id, action, request.get_json(silent=True) or {})
+    return jsonify(body), status
+
+
+@app.get("/api/integration/ptz/capabilities")
+def integration_ptz_capabilities():
+    if not _integration_token_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify({"cameras": _public_ptz_caps()})
+
+
+@app.post("/api/integration/ptz/<camera_id>/<path:action>")
+def integration_ptz_command(camera_id: str, action: str):
+    if not _integration_token_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    status, body = _ptz_request(camera_id, action, request.get_json(silent=True) or {})
+    return jsonify(body), status
+
+
+@app.route("/settings")
+@auth_mod.admin_required
+def settings_page():
+    """Настройки Viewer живут в модальном окне главной; /settings — вход."""
+    return redirect(url_for("index", settings=1))
+
+
+_VIEWER_NET_STATE = {"ts": 0.0, "sent": 0, "recv": 0}
+
+# PTZ: возможности кэшируются, чтобы не дёргать ONVIF на каждый рендер.
+_PTZ_CACHE = {"ts": 0.0, "data": {}}
+_PTZ_TTL = 60.0
+
+
+def _ptz_servers() -> list[dict]:
+    cfg = load_config()
+    servers = [s for s in (cfg.get("servers") or []) if isinstance(s, dict) and s.get("url")]
+    if not servers:
+        base = (os.environ.get("VHS_STREAMER_URL") or "").strip().rstrip("/")
+        key = (os.environ.get("VHS_STREAMER_API_TOKEN") or "").strip()
+        if base and key:
+            servers = [{"name": "env", "url": base, "api_key": key}]
+    return servers
+
+
+def _ptz_capabilities(force: bool = False) -> dict:
+    now = time.time()
+    if not force and now - _PTZ_CACHE["ts"] < _PTZ_TTL:
+        return _PTZ_CACHE["data"]
+    result = {}
+    for srv in _ptz_servers():
+        url = _normalize_server_url(srv.get("url", ""))
+        if not url:
+            continue
+        try:
+            response = requests.get(
+                url + "/api/ptz/capabilities",
+                headers=_vhs_headers(_server_key(srv)),
+                timeout=5,
+            )
+            if not response.ok:
+                continue
+            cameras = (response.json() or {}).get("cameras") or {}
+        except (requests.RequestException, ValueError):
+            continue
+        for cam_id, info in cameras.items():
+            if not isinstance(info, dict) or not info.get("has_ptz"):
+                continue
+            item = dict(info)
+            item["camera_id"] = str(cam_id)
+            item["server"] = srv.get("name") or url
+            item["server_url"] = url
+            item["server_key"] = _server_key(srv)
+            result.setdefault(str(cam_id), item)
+    _PTZ_CACHE["data"] = result
+    # Пустой ответ не кэшируем надолго: Streamer мог быть ещё не готов.
+    # Иначе после перезапуска/смены раскладки PTZ пропадает на минуту.
+    _PTZ_CACHE["ts"] = now if result else now - _PTZ_TTL + 10
+    return result
+
+
+def _ptz_request(camera_id: str, action: str, payload: dict | None = None):
+    caps = _ptz_capabilities()
+    cap = caps.get(str(camera_id))
+    if not cap:
+        return 404, {"ok": False, "error": "PTZ для камеры недоступен"}
+    action = str(action or "").strip().strip("/")
+    if action not in ("move", "stop", "home", "invert", "preset/goto", "preset/set", "preset/remove", "info"):
+        return 400, {"ok": False, "error": "неизвестное PTZ-действие"}
+    payload = dict(payload or {})
+    if action != "info":
+        payload.setdefault("profile_token", cap.get("profile_token"))
+    url = f"{cap['server_url']}/api/cameras/{camera_id}/ptz/{action}"
+    try:
+        headers = _vhs_headers(str(cap.get("server_key") or ""))
+        if action == "info":
+            response = requests.get(url, headers=headers, timeout=10)
+        else:
+            headers["Content-Type"] = "application/json"
+            response = requests.post(url, headers=headers, json=payload or {}, timeout=10)
+        try:
+            body = response.json()
+        except ValueError:
+            body = {"ok": response.ok, "text": response.text[:300]}
+        if action == "invert":
+            _PTZ_CACHE["ts"] = 0
+        return response.status_code, body
+    except requests.RequestException as exc:
+        return 502, {"ok": False, "error": str(exc)}
+
+
+@app.get("/api/system/stats")
+@auth_mod.login_required
+def api_system_stats():
+    """CPU/RAM/диски/сеть для мониторинга в подвале Viewer."""
+    if psutil is None:
+        return jsonify({"ok": False, "error": "psutil не установлен"}), 200
+    try:
+        cpu = psutil.cpu_percent(interval=None)
+        vm = psutil.virtual_memory()
+        ram = {
+            "percent": round(vm.percent, 1),
+            "used_mb": round((vm.total - vm.available) / 1024 / 1024, 1),
+            "total_mb": round(vm.total / 1024 / 1024, 1),
+        }
+        disks = []
+        seen = set()
+        for p in psutil.disk_partitions(all=False):
+            if "cdrom" in (p.opts or "").lower() or p.mountpoint in seen:
+                continue
+            seen.add(p.mountpoint)
+            try:
+                u = psutil.disk_usage(p.mountpoint)
+            except (PermissionError, OSError):
+                continue
+            label = (p.device or p.mountpoint).rstrip("\\/")
+            if label.endswith(":"):
+                label = label[:-1]
+            disks.append({
+                "label": label,
+                "mount": p.mountpoint,
+                "percent": round(u.percent, 1),
+            })
+
+        counters = psutil.net_io_counters()
+        now = time.time()
+        sent = int(counters.bytes_sent or 0)
+        recv = int(counters.bytes_recv or 0)
+        elapsed = now - float(_VIEWER_NET_STATE.get("ts") or 0.0)
+        sent_mbps = recv_mbps = None
+        if elapsed > 0.05 and _VIEWER_NET_STATE.get("ts"):
+            sent_mbps = round((sent - _VIEWER_NET_STATE["sent"]) * 8 / elapsed / 1_000_000, 2)
+            recv_mbps = round((recv - _VIEWER_NET_STATE["recv"]) * 8 / elapsed / 1_000_000, 2)
+        _VIEWER_NET_STATE.update({"ts": now, "sent": sent, "recv": recv})
+
+        return jsonify({
+            "ok": True,
+            "cpu": {"percent": round(cpu, 1)},
+            "ram": ram,
+            "disks": disks,
+            "network": {"sent_mbps": sent_mbps, "recv_mbps": recv_mbps},
+        })
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 200
 
 
 @app.route("/about")
@@ -468,6 +771,7 @@ def _complete_setup(
     username: str,
     password: str,
     clear_logs: bool,
+    streamer_key: str = "",
 ) -> None:
     """Создаёт свежий viewer_config.yaml с флагом _setup_complete."""
     # 1. Бэкап существующего конфига (если есть)
@@ -486,8 +790,12 @@ def _complete_setup(
         SETUP_FLAG: True,
         "title": "VHS-Viewer",
         "layout": "2x2",
-        "servers": [{"name": "local", "url": url}],
+        "servers": [{"name": "local", "url": url, "api_key": (streamer_key or "").strip()}],
         "streams": [],
+        "integration": {
+            "service_name": "viewer",
+            "ingest_key": __import__("secrets").token_urlsafe(32),
+        },
         "security": {
             "auth_enabled": True,
             "session_lifetime_hours": 24,
@@ -589,6 +897,7 @@ def setup_page():
 
     if request.method == "POST":
         streamer_url = (request.form.get("streamer_url") or "").strip()
+        streamer_key = (request.form.get("streamer_key") or "").strip()
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
         password2 = request.form.get("password2") or ""
@@ -620,7 +929,7 @@ def setup_page():
             error = "; ".join(errors)
         else:
             try:
-                _complete_setup(streamer_url, username, password, clear_logs)
+                _complete_setup(streamer_url, username, password, clear_logs, streamer_key)
                 logger.info("setup: завершён, admin=%s", username)
 
                 # Автологин
@@ -642,7 +951,7 @@ def setup_page():
         "setup.html",
         error=error,
         warning=warning,
-        default_streamer="http://127.0.0.1:8000",
+        default_streamer="http://127.0.0.1:8100",
         default_username="admin",
         app_footer=APP_FOOTER,
         version=__version__,
@@ -776,6 +1085,89 @@ def _read_recent_events(
     except Exception:
         logger.exception("не удалось прочитать alpr_events.jsonl")
         return []
+
+
+def _integration_token_ok() -> bool:
+    """Единый ключ Viewer для Security: X-VHS-Key (совместим с X-Ingest-Token)."""
+    cfg = load_config()
+    expected = str((cfg.get("integration") or {}).get("ingest_key") or "").strip()
+    if not expected:
+        expected = (os.environ.get("VHS_SECURITY_INGEST_TOKEN") or "").strip()
+    provided = (
+        request.headers.get("X-VHS-Key")
+        or request.headers.get("X-Ingest-Token")
+        or ""
+    ).strip()
+    return bool(expected) and hmac.compare_digest(expected, provided)
+
+
+@app.get("/api/integration/state")
+def integration_state():
+    """Единая точка для VHS-Security: камеры, потоки и события Viewer."""
+    if not _integration_token_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    cameras = {}
+    cfg = load_config()
+    servers = [s for s in (cfg.get("servers") or []) if isinstance(s, dict) and s.get("url")]
+    if not servers:
+        base = (os.environ.get("VHS_STREAMER_URL") or "").strip().rstrip("/")
+        key = (os.environ.get("VHS_STREAMER_API_TOKEN") or "").strip()
+        if base and key:
+            servers = [{"name": "env", "url": base, "api_key": key}]
+
+    for srv in servers:
+        srv_name = str(srv.get("name") or srv.get("url") or "streamer")
+        try:
+            streams = _get_streamer_streams(srv, timeout=6)
+        except Exception as exc:
+            logger.warning("integration/state: %s недоступен: %s", srv_name, exc)
+            continue
+        for stream in streams:
+            cid = str(stream.get("camera_id") or stream.get("id") or "")
+            if not cid:
+                continue
+            item = cameras.setdefault(cid, {
+                "id": cid,
+                "name": str(stream.get("camera_name") or cid),
+                "source": srv_name,
+                "streams": [],
+            })
+            item["streams"].append({
+                "id": stream.get("id"), "path": stream.get("path"),
+                "url": stream.get("webrtc_url", ""),
+            })
+    if not cameras:
+        # Резерв: потоки из конфигурации Viewer.
+        for stream in load_config().get("streams", []):
+            url = str(stream.get("url") or "")
+            path = urlsplit(url).path.rstrip("/")
+            sid = path.rsplit("/", 1)[-1] if path else str(stream.get("name") or "camera")
+            cameras[sid] = {
+                "id": sid, "name": str(stream.get("name") or sid),
+                "streams": [{"id": sid, "path": path, "url": url}],
+            }
+    events = _read_recent_events(limit=1000)
+    stream_to_camera = {}
+    for camera in cameras.values():
+        for stream in camera.get("streams", []):
+            if stream.get("id"):
+                stream_to_camera[str(stream["id"])] = camera["id"]
+    for event in events:
+        stream_id = str(event.get("camera_id") or "")
+        if stream_id in stream_to_camera:
+            event["camera_id"] = stream_to_camera[stream_id]
+            event["camera_name"] = next(
+                (c["name"] for c in cameras.values() if c["id"] == stream_to_camera[stream_id]),
+                event.get("camera_name") or stream_id,
+            )
+    return jsonify({"cameras": list(cameras.values()), "events": events})
+
+
+@app.get("/api/integration/events")
+def integration_events():
+    if not _integration_token_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    return jsonify({"events": _read_recent_events(limit=1000)})
 
 
 @app.route("/api/events")
@@ -1832,6 +2224,16 @@ def api_events_clear():
     return jsonify({"ok": True, "snapshots_removed": removed_snaps})
 
 
+@app.route("/api/integration/snapshot/<path:filename>")
+def integration_snapshot(filename: str):
+    """Выдача снапшота доверенному VHS-Security по токену."""
+    if not _integration_token_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not filename.startswith("snapshots/"):
+        return jsonify({"error": "not found"}), 404
+    return send_from_directory(LOGS_DIR, filename)
+
+
 @app.route("/snapshot/<path:filename>")
 @auth_mod.login_required
 def snapshot_file(filename: str):
@@ -1841,6 +2243,35 @@ def snapshot_file(filename: str):
 # ======================================================================
 # API: конфиг (серверы + потоки + раскладка + analytics cameras)
 # ======================================================================
+@app.post("/api/whep")
+@auth_mod.login_required
+def api_whep():
+    """Same-origin WHEP signaling proxy: браузер -> Viewer -> MediaMTX."""
+    data = request.get_json(silent=True) or {}
+    stream_url = str(data.get("url") or "").strip()
+    sdp = str(data.get("sdp") or "")
+    if not stream_url or not sdp:
+        return jsonify({"ok": False, "error": "url and sdp required"}), 400
+    parsed = urlsplit(stream_url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return jsonify({"ok": False, "error": "invalid stream url"}), 400
+    whep_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/')}/whep"
+    auth = None
+    if parsed.username or parsed.password:
+        auth = (parsed.username or "", parsed.password or "")
+    try:
+        response = requests.post(
+            whep_url, data=sdp,
+            headers={"Content-Type": "application/sdp"},
+            auth=auth, timeout=15,
+        )
+    except requests.RequestException as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    if not response.ok:
+        return jsonify({"ok": False, "error": f"MediaMTX HTTP {response.status_code}"}), 502
+    return jsonify({"ok": True, "sdp": response.text})
+
+
 @app.route("/api/config", methods=["GET"])
 @auth_mod.admin_required
 def api_get_config():
@@ -1848,7 +2279,7 @@ def api_get_config():
 
 
 @app.route("/api/config", methods=["POST"])
-@auth_mod.login_required
+@auth_mod.admin_required
 def api_set_config():
     data = request.get_json(silent=True) or {}
     cfg = load_config()
@@ -1872,8 +2303,24 @@ def api_set_config():
         if not url:
             continue
         name = (s.get("name") or "").strip() or url
-        servers.append({"name": name, "url": url})
+        api_key = str(s.get("api_key") or "").strip()
+        servers.append({"name": name, "url": url, "api_key": api_key})
     cfg["servers"] = servers
+
+    # --- Внутренний ключ Viewer для Security ---
+    if "integration" in data or "ingest_key" in data:
+        integ = cfg.get("integration") if isinstance(cfg.get("integration"), dict) else {}
+        incoming = data.get("integration") if isinstance(data.get("integration"), dict) else {}
+        key = str(
+            incoming.get("ingest_key", data.get("ingest_key", integ.get("ingest_key", "")))
+            or ""
+        ).strip()
+        integ["ingest_key"] = key
+        integ.setdefault("service_name", "viewer")
+        cfg["integration"] = integ
+        if key:
+            # EventWriter отправляет события в Security и читает ключ из env.
+            os.environ["VHS_SECURITY_INGEST_TOKEN"] = key
 
     # --- Потоки ---
     raw_streams = data.get("streams", [])
@@ -1954,20 +2401,27 @@ def api_server_test():
     url = _normalize_server_url(data.get("url", ""))
     if not url:
         return jsonify({"error": "URL обязателен"}), 400
+    key = str(data.get("api_key") or "").strip()
 
     try:
-        r = requests.get(f"{url}/api/public/streams", timeout=5)
-        if r.status_code != 200:
-            return jsonify({"ok": False, "error": f"HTTP {r.status_code}"}), 200
-        j = r.json()
+        streams = _get_streamer_streams({"url": url, "api_key": key}, timeout=5)
+        info = {}
+        try:
+            info = requests.get(
+                url + "/api/integration/info", headers=_vhs_headers(key), timeout=4
+            ).json() or {}
+        except (requests.RequestException, ValueError):
+            pass
         return jsonify(
             {
                 "ok": True,
-                "server_name": j.get("server_name", "VHS-Streamer"),
-                "streams_count": j.get("count", 0),
+                "server_name": info.get("app", "VHS-Streamer"),
+                "version": info.get("version", ""),
+                "streams_count": len(streams),
+                "auth": bool(key),
             }
         )
-    except requests.RequestException as e:
+    except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 200
 
 
@@ -1978,7 +2432,10 @@ def api_server_test():
 @auth_mod.admin_required
 def api_servers_refresh():
     cfg = load_config()
-    servers = cfg.get("servers", [])
+    payload = request.get_json(silent=True) or {}
+    servers = payload.get("servers") if isinstance(payload.get("servers"), list) else None
+    if servers is None:
+        servers = cfg.get("servers", [])
     if not servers:
         return jsonify(
             {
@@ -1993,42 +2450,44 @@ def api_servers_refresh():
     errors = []
 
     for srv in servers:
-        srv_url = srv.get("url", "")
+        srv_url = _normalize_server_url(srv.get("url", ""))
         srv_name = srv.get("name", srv_url)
         if not srv_url:
             continue
         try:
-            r = requests.get(f"{srv_url}/api/public/streams", timeout=5)
-            r.raise_for_status()
-            j = r.json()
-        except requests.RequestException as e:
+            streams = _get_streamer_streams(srv, timeout=5)
+        except Exception as e:
             logger.warning("Сервер %s недоступен: %s", srv_url, e)
             errors.append({"server": srv_name, "url": srv_url, "error": str(e)})
             continue
 
-        for st in j.get("streams", []):
+        for st in streams:
             webrtc_urls = st.get("webrtc_urls", [])
-            if not webrtc_urls:
-                continue
             chosen = None
             for u in webrtc_urls:
                 if "локально" in (u.get("label") or "").lower():
                     chosen = u
                     break
-            if not chosen:
+            if not chosen and webrtc_urls:
                 chosen = webrtc_urls[0]
+            url = (chosen or {}).get("url") or st.get("webrtc_url", "")
+            if not url:
+                continue
 
             uid = f"{srv_url}|{st.get('path', '')}"
+            name = st.get("name") or st.get("id") or "Поток"
+            if len(servers) > 1:
+                name = f"{srv_name} · {name}"
 
             all_streams.append(
                 {
                     "uid": uid,
                     "server": srv_name,
                     "server_url": srv_url,
-                    "name": st.get("name") or st.get("id") or "Поток",
+                    "name": name,
                     "camera_name": st.get("camera_name", ""),
                     "path": st.get("path", ""),
-                    "url": chosen["url"],
+                    "url": url,
                     "all_urls": webrtc_urls,
                 }
             )
