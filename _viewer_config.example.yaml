@@ -73,47 +73,14 @@ analytics:
       - person
       - dog
       - cat
-relay:
-  relays:
-  - id: gate_main
-    name: Шлагбаум главный
-    enabled: true
-    url_open: http://192.168.1.100/relay?on=1
-    url_close: http://192.168.1.100/relay?on=0
-    method: GET
-    timeout: 5.0
-    open_duration_sec: 5
-    cooldown_sec: 30
-    cameras:
-    - analog_1_s1
-    whitelist:
-    - А798АР177
-    - В123ВС50
-messaging:
-  channels:
-  - id: tg_admin
-    name: Telegram — админ
-    type: telegram
-    enabled: false
-    token: ''
-    chat_id: ''
-    categories: []
-    cameras: []
-    min_confidence: 0.0
-    attach_snapshot: true
-    cooldown_sec: 5
-    template: ''
-  - id: wh_plates
-    name: Webhook — номера
-    type: webhook
-    enabled: false
-    url: ''
-    method: POST
-    timeout: 10.0
-    categories:
-    - plate
-    cameras: []
-    min_confidence: 0.6
-    template: PLATE:{plate} CAM:{camera_id}
-    attach_snapshot: false
-    cooldown_sec: 15
+# Видеоархив Viewer. Реле и сообщения настраиваются в VHS-Security.
+archive:
+  enabled: false
+  mode: events            # events | always | off
+  path: ''                # пусто = папка Viewer/archive
+  quota_gb: 50            # 0 = без ограничения
+  event_types: [plate, person, vehicle, animal]
+  clip_seconds: 15
+  cooldown_sec: 30
+  rtsp_port: 8554
+  ffmpeg_path: ''

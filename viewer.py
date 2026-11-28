@@ -86,6 +86,7 @@ CONFIG_PATH = BASE_DIR / "viewer_config.yaml"
 LOGS_DIR = BASE_DIR / "logs"
 EVENTS_JSONL = LOGS_DIR / "alpr_events.jsonl"
 RELAY_LOG = LOGS_DIR / "relay.log"
+SECURITY_URL = os.environ.get("VHS_SECURITY_URL", "http://127.0.0.1:8300").rstrip("/")
 MESSAGES_LOG = LOGS_DIR / "messages.log"
 
 
@@ -140,6 +141,18 @@ DEFAULT_CONFIG = {
         "ingest_key": "",
         "service_name": "viewer",
     },
+    "archive": {
+        "enabled": False,
+        "mode": "events",
+        "path": "",
+        "quota_gb": 50,
+        "event_types": ["plate", "person", "vehicle", "animal"],
+        "clip_seconds": 15,
+        "cooldown_sec": 30,
+        "rtsp_port": 8554,
+        "ffmpeg_path": "",
+        "cameras": [],
+    },
 }
 
 
@@ -159,6 +172,12 @@ def load_config() -> dict:
             cfg["security"] = dict(DEFAULT_CONFIG["security"])
         if not isinstance(cfg.get("integration"), dict):
             cfg["integration"] = dict(DEFAULT_CONFIG["integration"])
+        if not isinstance(cfg.get("archive"), dict):
+            cfg["archive"] = dict(DEFAULT_CONFIG["archive"])
+        else:
+            merged_archive = dict(DEFAULT_CONFIG["archive"])
+            merged_archive.update(cfg["archive"])
+            cfg["archive"] = merged_archive
         for srv in cfg.get("servers", []):
             if isinstance(srv, dict):
                 srv["api_key"] = str(srv.get("api_key") or "").strip()
@@ -298,6 +317,8 @@ CSRF_EXEMPT = (
     re.compile(r"^/api/bots/[^/]+/config$"),
     # Внутренний PTZ: Security → Viewer, авторизация по X-VHS-Key.
     re.compile(r"^/api/integration/ptz/"),
+    # Архив: Security → Viewer, авторизация по X-VHS-Key.
+    re.compile(r"^/api/integration/archive/"),
 )
 
 
@@ -1301,6 +1322,195 @@ def api_analytics_summary():
 
 
 # ======================================================================
+# Видеоархив Viewer
+# ======================================================================
+def _save_archive_settings(raw: dict) -> dict:
+    """Сохранить archive.* из интеграционного API Security."""
+    cfg = load_config()
+    current = dict(DEFAULT_CONFIG["archive"])
+    current.update(cfg.get("archive") if isinstance(cfg.get("archive"), dict) else {})
+    source = raw if isinstance(raw, dict) else {}
+    archive = dict(current)
+    archive["enabled"] = bool(source.get("enabled", archive.get("enabled", False)))
+    mode = str(source.get("mode", archive.get("mode", "events")) or "events").lower()
+    archive["mode"] = mode if mode in ("events", "always", "off") else "events"
+    archive["path"] = str(source.get("path", archive.get("path", "")) or "").strip()
+    try:
+        archive["quota_gb"] = max(0.0, min(100000.0, float(source.get("quota_gb", archive.get("quota_gb", 50)))))
+    except (TypeError, ValueError):
+        archive["quota_gb"] = 50.0
+    for field, low, high, default in (
+        ("clip_seconds", 1, 3600, 15),
+        ("cooldown_sec", 0, 86400, 30),
+        ("rtsp_port", 1, 65535, 8554),
+    ):
+        try:
+            value = int(source.get(field, archive.get(field, default)))
+        except (TypeError, ValueError):
+            value = default
+        archive[field] = max(low, min(high, value))
+    archive["ffmpeg_path"] = str(source.get("ffmpeg_path", archive.get("ffmpeg_path", "")) or "").strip()
+    event_types = source.get("event_types", archive.get("event_types", []))
+    archive["event_types"] = [
+        str(x).lower() for x in (event_types if isinstance(event_types, list) else [])
+        if str(x).lower() in ("plate", "person", "vehicle", "animal", "object")
+    ]
+    cameras = source.get("cameras", archive.get("cameras", []))
+    archive["cameras"] = [str(x).strip() for x in (cameras if isinstance(cameras, list) else []) if str(x).strip()]
+    cfg["archive"] = archive
+    save_config(cfg)
+    app.config["VIEWER_CONFIG"] = cfg
+    manager = _get_archive_manager()
+    if manager is not None:
+        manager.reconfigure(archive, cfg.get("streams") or [])
+    logger.info("archive: настройки сохранены (enabled=%s, mode=%s, path=%s)",
+                archive["enabled"], archive["mode"], archive["path"])
+    return archive
+
+
+@app.route("/archive")
+@auth_mod.login_required
+def archive_page():
+    return render_template(
+        "archive.html",
+        user=g.user,
+        app_footer=APP_FOOTER,
+        version=__version__,
+        cfg=load_config(),
+    )
+
+
+@app.route("/api/archive/status")
+@auth_mod.login_required
+def api_archive_status():
+    manager = _get_archive_manager()
+    if manager is None:
+        return jsonify({
+            "enabled": False, "mode": "off", "path": "",
+            "quota_gb": 0, "used_bytes": 0, "used_gb": 0,
+            "free_bytes": 0, "free_gb": 0, "clips": 0,
+            "error": "аналитика/архив не запущены",
+        })
+    return jsonify(manager.stats())
+
+
+@app.route("/api/archive/clips")
+@auth_mod.login_required
+def api_archive_clips():
+    manager = _get_archive_manager()
+    if manager is None:
+        return jsonify({"clips": [], "total": 0})
+    try:
+        limit = max(1, min(int(request.args.get("limit", 300)), 2000))
+    except (TypeError, ValueError):
+        limit = 300
+    clips = manager.clips(limit=limit)
+    camera = (request.args.get("camera") or "").strip()
+    category = (request.args.get("category") or "").strip().lower()
+    date = (request.args.get("date") or "").strip()
+    if camera:
+        clips = [c for c in clips if c.get("camera") == camera]
+    if category:
+        clips = [c for c in clips if c.get("category") == category]
+    if date:
+        clips = [c for c in clips if c.get("iso", "").startswith(date)]
+    return jsonify({"clips": clips, "total": len(clips)})
+
+
+@app.route("/api/archive/delete", methods=["POST"])
+@auth_mod.admin_required
+def api_archive_delete():
+    data = request.get_json(silent=True) or {}
+    relative = str(data.get("path") or "")
+    manager = _get_archive_manager()
+    if manager is None:
+        return jsonify({"error": "архив не запущен"}), 503
+    if not relative or not manager.delete_clip(relative):
+        return jsonify({"error": "файл не найден"}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/archive/file/<path:relative>")
+@auth_mod.login_required
+def archive_file(relative: str):
+    manager = _get_archive_manager()
+    if manager is None:
+        abort(404)
+    safe = manager.clip_path(relative)
+    if safe is None:
+        abort(404)
+    return send_from_directory(str(manager.path), relative, conditional=True)
+
+
+# --- Интеграция с VHS-Security ---------------------------------------
+@app.get("/api/integration/archive/status")
+def integration_archive_status():
+    if not _integration_token_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    manager = _get_archive_manager()
+    if manager is None:
+        return jsonify({"enabled": False, "mode": "off", "path": "", "clips": 0,
+                        "used_gb": 0, "free_gb": 0, "quota_gb": 0,
+                        "error": "аналитика/архив не запущены"})
+    return jsonify(manager.stats())
+
+
+@app.get("/api/integration/archive/clips")
+def integration_archive_clips():
+    if not _integration_token_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    manager = _get_archive_manager()
+    if manager is None:
+        return jsonify({"clips": [], "total": 0})
+    try:
+        limit = max(1, min(int(request.args.get("limit", 300)), 2000))
+    except (TypeError, ValueError):
+        limit = 300
+    clips = manager.clips(limit=limit)
+    camera = (request.args.get("camera") or "").strip()
+    category = (request.args.get("category") or "").strip().lower()
+    date = (request.args.get("date") or "").strip()
+    if camera:
+        clips = [c for c in clips if c.get("camera") == camera]
+    if category:
+        clips = [c for c in clips if c.get("category") == category]
+    if date:
+        clips = [c for c in clips if c.get("iso", "").startswith(date)]
+    return jsonify({"clips": clips, "total": len(clips)})
+
+
+@app.get("/api/integration/archive/config")
+def integration_archive_config_get():
+    if not _integration_token_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    cfg = load_config()
+    return jsonify({"archive": cfg.get("archive") or DEFAULT_CONFIG["archive"]})
+
+
+@app.post("/api/integration/archive/config")
+def integration_archive_config_save():
+    if not _integration_token_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    payload = request.get_json(silent=True) or {}
+    raw = payload.get("archive") if isinstance(payload.get("archive"), dict) else payload
+    archive = _save_archive_settings(raw)
+    return jsonify({"ok": True, "archive": archive})
+
+
+@app.get("/api/integration/archive/file/<path:relative>")
+def integration_archive_file(relative: str):
+    if not _integration_token_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    manager = _get_archive_manager()
+    if manager is None:
+        abort(404)
+    safe = manager.clip_path(relative)
+    if safe is None:
+        abort(404)
+    return send_from_directory(str(manager.path), relative, conditional=True)
+
+
+# ======================================================================
 # Реле: список, CRUD, whitelist, тест, лог (только admin)
 # ======================================================================
 def _load_root_yaml_section(section: str) -> dict:
@@ -1379,6 +1589,11 @@ def _get_live_relay_manager():
     return getattr(mgr, "_relay", None) if mgr else None
 
 
+def _get_archive_manager():
+    mgr = globals().get("_analytics_manager")
+    return getattr(mgr, "_archive", None) if mgr else None
+
+
 def _relay_public(r: dict) -> dict:
     """Копия реле без пароля."""
     out = dict(r)
@@ -1389,12 +1604,8 @@ def _relay_public(r: dict) -> dict:
 @app.route("/relay")
 @auth_mod.admin_required
 def relay_page():
-    return render_template(
-        "relay.html",
-        user=g.user,
-        app_footer=APP_FOOTER,
-        version=__version__,
-    )
+    # Автоматизация перенесена в VHS-Security.
+    return redirect(SECURITY_URL + "/automation#relays", code=302)
 
 
 @app.route("/api/relay/list")
@@ -1751,12 +1962,8 @@ def _messaging_channel_default() -> dict:
 @app.route("/messaging")
 @auth_mod.admin_required
 def messaging_page():
-    return render_template(
-        "messaging.html",
-        user=g.user,
-        app_footer=APP_FOOTER,
-        version=__version__,
-    )
+    # Уведомления/реакции перенесены в VHS-Security.
+    return redirect(SECURITY_URL + "/automation#messaging", code=302)
 
 
 @app.route("/api/messaging/list")
@@ -2379,6 +2586,54 @@ def api_set_config():
 
         an["cameras"] = new_cams
         cfg["analytics"] = an
+
+    # --- Видеоархив ---
+    raw_archive = data.get("archive")
+    if isinstance(raw_archive, dict):
+        current_archive = dict(DEFAULT_CONFIG["archive"])
+        current_archive.update(cfg.get("archive") if isinstance(cfg.get("archive"), dict) else {})
+        archive = dict(current_archive)
+        archive["enabled"] = bool(raw_archive.get("enabled", archive.get("enabled", False)))
+        mode = str(raw_archive.get("mode", archive.get("mode", "events")) or "events").lower()
+        archive["mode"] = mode if mode in ("events", "always", "off") else "events"
+        archive["path"] = str(raw_archive.get("path", archive.get("path", "")) or "").strip()
+        try:
+            quota = float(raw_archive.get("quota_gb", archive.get("quota_gb", 50)))
+        except (TypeError, ValueError):
+            quota = 50.0
+        archive["quota_gb"] = max(0.0, min(100000.0, quota))
+        try:
+            clip_seconds = int(raw_archive.get("clip_seconds", archive.get("clip_seconds", 15)))
+        except (TypeError, ValueError):
+            clip_seconds = 15
+        archive["clip_seconds"] = max(1, min(3600, clip_seconds))
+        try:
+            cooldown = int(raw_archive.get("cooldown_sec", archive.get("cooldown_sec", 30)))
+        except (TypeError, ValueError):
+            cooldown = 30
+        archive["cooldown_sec"] = max(0, min(86400, cooldown))
+        try:
+            rtsp_port = int(raw_archive.get("rtsp_port", archive.get("rtsp_port", 8554)))
+        except (TypeError, ValueError):
+            rtsp_port = 8554
+        archive["rtsp_port"] = max(1, min(65535, rtsp_port))
+        archive["ffmpeg_path"] = str(raw_archive.get("ffmpeg_path", archive.get("ffmpeg_path", "")) or "").strip()
+        event_types = raw_archive.get("event_types", archive.get("event_types", []))
+        if isinstance(event_types, list):
+            archive["event_types"] = [
+                str(x).lower() for x in event_types
+                if str(x).lower() in ("plate", "person", "vehicle", "animal", "object")
+            ]
+        cameras = raw_archive.get("cameras", archive.get("cameras", []))
+        if isinstance(cameras, list):
+            archive["cameras"] = [str(x).strip() for x in cameras if str(x).strip()]
+        cfg["archive"] = archive
+        archive_manager = _get_archive_manager()
+        if archive_manager is not None:
+            try:
+                archive_manager.reconfigure(archive, cfg.get("streams") or [])
+            except Exception:
+                logger.exception("не удалось применить настройки архива")
 
     save_config(cfg)
     app.config["VIEWER_CONFIG"] = cfg

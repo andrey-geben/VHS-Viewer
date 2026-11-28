@@ -2,702 +2,427 @@
 <html lang="ru">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Аналитика — VHS-Viewer</title>
     <style>
         :root {
-            --bg: #14161a; --panel: #1e2126; --border: #2a2f37;
-            --text: #e8e8e8; --muted: #8b96a5; --accent: #4da3ff;
-            --ok: #4caf50; --warn: #f0ad4e; --danger: #e05252;
-            --cat-plate: #2c7a2c;
-            --cat-person: #b06d10;
-            --cat-vehicle: #1f5fa8;
-            --cat-animal: #8a2c2c;
-            --cat-object: #4a4a4a;
+            --bg: #07141c;
+            --panel: #0d222d;
+            --panel2: #102b37;
+            --line: #254556;
+            --line2: #1b3543;
+            --text: #e8f5f8;
+            --muted: #8fa9b5;
+            --accent: #49c6d4;
+            --plate: #76d19a;
+            --person: #d9a441;
+            --vehicle: #6cb2ff;
+            --animal: #e08a8a;
+            --other: #91a8b4;
         }
         * { box-sizing: border-box; }
-        html, body { height: 100%; }
+        html, body { min-height: 100%; }
         body {
             margin: 0;
             font-family: Arial, sans-serif;
             background: var(--bg);
             color: var(--text);
-            overflow: hidden;
         }
-
-        /* ============ Toolbar ============ */
-        .toolbar {
-            min-height: 44px;
-            padding: 6px 20px;
+        main {
+            max-width: 1500px;
+            margin: 0 auto;
+            padding: 22px 24px 38px;
+        }
+        .page-head {
             display: flex;
-            align-items: center;
+            align-items: flex-end;
+            justify-content: space-between;
             gap: 18px;
             flex-wrap: wrap;
-            background: #1a1d22;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.85em;
-            color: var(--muted);
+            margin-bottom: 20px;
         }
-        .toolbar .stat { display: flex; align-items: center; gap: 6px; }
-        .toolbar .stat b { color: var(--text); }
-        .toolbar .sep {
-            width: 1px; height: 20px; background: var(--border);
+        .kicker {
+            color: var(--accent);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .09em;
+            text-transform: uppercase;
         }
-        .toolbar .group {
-            display: flex; align-items: center; gap: 6px;
+        h1 { margin: 4px 0 0; font-size: 28px; line-height: 1.05; }
+        .subtitle { margin: 7px 0 0; color: var(--muted); font-size: 12px; }
+        .head-actions { display: flex; align-items: center; gap: 10px; }
+        .updated { color: var(--muted); font-size: 11px; }
+        button { font: inherit; cursor: pointer; }
+        .refresh {
+            border: 1px solid #3b6677;
+            border-radius: 5px;
+            background: #12303d;
+            color: var(--accent);
+            padding: 7px 13px;
+            font-size: 11px;
         }
-        .toolbar .group-label {
-            color: var(--muted); font-size: 0.85em; margin-right: 4px;
-        }
-        .toolbar select,
-        .toolbar input[type=number] {
-            background: #14161a;
-            color: var(--text);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 5px 8px;
-            font-size: 0.9em;
-            font-family: inherit;
-        }
-        .toolbar .layout-btn {
-            background: #2a2f37;
-            color: var(--text);
-            border: 1px solid transparent;
-            border-radius: 4px;
-            padding: 5px 10px;
-            cursor: pointer;
-            font-size: 0.85em;
-        }
-        .toolbar .layout-btn:hover { background: #353b44; }
-        .toolbar .layout-btn.active {
-            background: #2a6df4;
-            color: #fff;
-            border-color: #4da3ff;
-        }
-        .toolbar .right {
-            margin-left: auto;
-            display: flex; align-items: center; gap: 10px;
-        }
-        .toolbar button.primary {
-            padding: 5px 12px;
-            background: #2a6df4;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9em;
-        }
-        .toolbar button.primary:hover { background: #1e5bd8; }
-        .toolbar label.check {
-            display: inline-flex; align-items: center; gap: 5px;
-            color: var(--muted); font-size: 0.9em; cursor: pointer;
-        }
-        .toolbar label.check input { accent-color: #2a6df4; }
+        .refresh:hover { background: var(--accent); color: #04151b; }
 
-        /* ============ Сетка ============ */
-        #grid {
+        .summary {
             display: grid;
-            gap: 4px;
-            padding: 4px;
-            height: calc(100vh - 48px - 44px - 26px);
-            background: #000;
-            overflow-y: auto;
+            grid-template-columns: 1.25fr repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 22px;
         }
-        #grid.empty {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--muted);
-            font-size: 1em;
-            padding: 40px;
-            text-align: center;
-        }
-
-        #grid.layout-auto {
-            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-            grid-auto-rows: minmax(240px, 1fr);
-        }
-        #grid.layout-1x1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
-        #grid.layout-2x2 {
-            grid-template-columns: repeat(2, 1fr);
-            grid-auto-rows: minmax(240px, 1fr);
-        }
-        #grid.layout-3x3 {
-            grid-template-columns: repeat(3, 1fr);
-            grid-auto-rows: minmax(200px, 1fr);
-        }
-        #grid.layout-4x4 {
-            grid-template-columns: repeat(4, 1fr);
-            grid-auto-rows: minmax(160px, 1fr);
-        }
-
-        #grid.compact .an-cell .video-wrap { display: none; }
-        #grid.compact .an-cell { min-height: 0; }
-        #grid.compact .an-cell .stats-bar { min-height: 44px; }
-
-        /* Плитка */
-        .an-cell {
+        .stat {
             position: relative;
-            background: #000;
             overflow: hidden;
-            border-radius: 4px;
-            border: 1px solid #1a1d22;
-            display: flex;
-            flex-direction: column;
-        }
-        .an-cell.pulse {
-            animation: cellPulse 1.5s ease-in-out;
-        }
-        @keyframes cellPulse {
-            0% { border-color: #2a6df4; box-shadow: 0 0 0 0 rgba(42, 109, 244, 0.5); }
-            100% { border-color: #1a1d22; box-shadow: 0 0 0 0 rgba(42, 109, 244, 0); }
-        }
-
-        .an-cell .video-wrap {
-            position: relative;
-            flex: 1;
-            background: #000;
-            min-height: 0;
-        }
-        .an-cell iframe {
-            width: 100%; height: 100%;
-            border: 0; display: block;
-        }
-        .an-cell .cam-label {
-            position: absolute; top: 8px; left: 8px;
-            background: rgba(0,0,0,0.75);
-            color: #fff;
-            padding: 3px 10px;
-            border-radius: 4px;
-            font-size: 0.85em;
-            pointer-events: none;
-            z-index: 2;
-            border-left: 3px solid var(--accent);
-        }
-
-        .an-cell .stats-bar {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            background: #14161a;
-            border-top: 1px solid var(--border);
-            font-size: 0.82em;
-            color: var(--muted);
-            min-height: 40px;
-        }
-        .an-cell .total-badge {
-            background: #2a6df4;
-            color: #fff;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-weight: bold;
-            font-size: 0.9em;
-            flex-shrink: 0;
-        }
-        .an-cell .cat-chips {
-            display: flex;
-            gap: 4px;
-            flex-wrap: wrap;
-            min-width: 0;
-        }
-        .an-cell .cat-mini {
-            display: inline-flex;
-            align-items: center;
-            gap: 3px;
-            padding: 1px 6px;
+            min-height: 116px;
+            padding: 14px;
+            border: 1px solid var(--line);
             border-radius: 8px;
-            font-size: 0.85em;
-            color: #fff;
-            white-space: nowrap;
+            background: var(--panel);
+            color: var(--text);
+            text-align: left;
         }
-        .an-cell .cat-mini.cat-plate   { background: var(--cat-plate); }
-        .an-cell .cat-mini.cat-person  { background: var(--cat-person); }
-        .an-cell .cat-mini.cat-vehicle { background: var(--cat-vehicle); }
-        .an-cell .cat-mini.cat-animal  { background: var(--cat-animal); }
-        .an-cell .cat-mini.cat-object  { background: var(--cat-object); }
+        .stat.total {
+            background: linear-gradient(135deg, #0d2d38, #0a1d27);
+            border-color: #3b6677;
+        }
+        .stat[data-cat] { cursor: pointer; }
+        .stat[data-cat]:hover { border-color: var(--accent); }
+        .stat-label {
+            color: var(--muted);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+        .stat-value {
+            display: block;
+            margin-top: 9px;
+            font-size: 38px;
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -.03em;
+        }
+        .stat.total .stat-value { color: var(--accent); }
+        .stat[data-cat="plate"] .stat-value { color: var(--plate); }
+        .stat[data-cat="person"] .stat-value { color: var(--person); }
+        .stat[data-cat="vehicle"] .stat-value { color: var(--vehicle); }
+        .stat[data-cat="animal"] .stat-value { color: var(--animal); }
+        .stat-foot {
+            margin-top: 9px;
+            color: var(--muted);
+            font-size: 10px;
+        }
+        .stat-bar {
+            height: 3px;
+            margin-top: 12px;
+            border-radius: 2px;
+            background: #1b3543;
+            overflow: hidden;
+        }
+        .stat-bar > i { display: block; height: 100%; width: 0; background: currentColor; transition: width .25s; }
 
-        .an-cell .last-event {
-            margin-left: auto;
+        .table-card {
+            border: 1px solid var(--line);
+            border-radius: 9px;
+            background: var(--panel);
+            overflow: hidden;
+        }
+        .table-head {
             display: flex;
             align-items: center;
-            gap: 6px;
-            white-space: nowrap;
-            color: #cfd6e0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 50%;
-            flex-shrink: 1;
-        }
-        .an-cell .last-event .le-time {
-            color: var(--muted);
-            font-size: 0.92em;
-        }
-        .an-cell .last-event .le-label {
-            color: var(--text);
-            font-weight: 600;
-        }
-        .an-cell .no-events {
-            color: #4a4a4a;
-            font-style: italic;
-        }
-
-        #grid.compact .an-cell .total-badge {
-            font-size: 1.4em;
-            padding: 4px 14px;
-            border-radius: 12px;
-        }
-        #grid.compact .an-cell .stats-bar {
-            font-size: 0.95em;
-            padding: 10px 12px;
-        }
-
-        footer {
-            position: fixed;
-            bottom: 0; left: 0; right: 0;
-            height: 26px;
-            padding: 4px 12px;
-            background: var(--panel);
-            border-top: 1px solid var(--border);
-            color: var(--muted);
-            font-size: 0.8em;
-            display: flex;
             justify-content: space-between;
+            gap: 10px;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--line2);
         }
-        footer a { color: #6cb2ff; text-decoration: none; }
-
-        /* Lazy-placeholder, пока iframe не загружен */
-        .an-cell .lazy-hint {
-            position: absolute;
-            inset: 0;
-            display: flex;
+        .table-head h2 { margin: 0; font-size: 15px; }
+        .table-head p { margin: 3px 0 0; color: var(--muted); font-size: 10px; }
+        .table-head .table-hint { color: #6f8a98; font-size: 9px; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th {
+            padding: 10px 12px;
+            color: var(--muted);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: .05em;
+            text-align: left;
+            text-transform: uppercase;
+            white-space: nowrap;
+            background: #0a1b24;
+            border-bottom: 1px solid var(--line2);
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--line2);
+            vertical-align: middle;
+        }
+        tr:last-child td { border-bottom: none; }
+        tbody tr:hover { background: rgba(73,198,212,.035); }
+        tbody tr.camera-row { cursor: pointer; }
+        tbody tr.camera-row:hover { background: rgba(73,198,212,.07); }
+        tbody tr.camera-row:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+        .camera-name { font-weight: 700; color: var(--text); }
+        .camera-id { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
+        .count {
+            display: inline-flex;
+            min-width: 30px;
             align-items: center;
             justify-content: center;
-            color: #4a4a4a;
-            font-size: 0.85em;
-            background: #0a0b0e;
+            padding: 3px 7px;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            color: var(--text);
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 11px;
         }
+        .count:hover { border-color: var(--accent); color: var(--accent); background: #12303d; }
+        .count.zero { color: #526c78; font-weight: 400; pointer-events: none; border-color: transparent; }
+        .count.plate:hover { border-color: var(--plate); color: var(--plate); }
+        .count.person:hover { border-color: var(--person); color: var(--person); }
+        .count.vehicle:hover { border-color: var(--vehicle); color: var(--vehicle); }
+        .count.animal:hover { border-color: var(--animal); color: var(--animal); }
+        .total-count { font-size: 14px; font-weight: 800; color: var(--text); }
+        .last { min-width: 150px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+        .last b { display: block; margin-bottom: 2px; color: var(--text); font-size: 11px; font-weight: 600; }
+        .empty { padding: 38px 20px; color: var(--muted); font-size: 12px; text-align: center; }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            margin-top: 0;
+            color: var(--muted);
+            font-size: 9px;
+        }
+        .legend span { display: inline-flex; align-items: center; gap: 5px; }
+        .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+        @media (max-width: 900px) {
+            .summary { grid-template-columns: repeat(2, 1fr); }
+            .stat.total { grid-column: span 2; }
+            .legend { display: none; }
+        }
+        @media (max-width: 520px) {
+            main { padding: 16px 12px 28px; }
+            .summary { gap: 7px; }
+            .stat { min-height: 96px; padding: 11px; }
+            .stat-value { font-size: 30px; }
+        }
+        /* У analytics свой заголовок; общий баннер навигации скрываем. */
+        body.analytics > .page-head { display: none; }
     </style>
 </head>
-<body>
-
+<body class="analytics">
 {% include '_nav.html' %}
 
-<div class="toolbar">
-    <div class="stat">Камер: <b id="stat-cameras">0</b></div>
-    <div class="stat">Событий за <span id="stat-date">сегодня</span>: <b id="stat-events">0</b></div>
-
-    <div class="sep"></div>
-
-    <div class="group">
-        <span class="group-label">Раскладка:</span>
-        <button class="layout-btn" data-layout="auto" title="Авто">⊞ Auto</button>
-        <button class="layout-btn" data-layout="2x2" title="2×2">⊞ 2×2</button>
-        <button class="layout-btn" data-layout="3x3" title="3×3">⊞ 3×3</button>
-        <button class="layout-btn" data-layout="4x4" title="4×4">⊞ 4×4</button>
+{% set is_admin = user and user.role == 'admin' %}
+<main>
+    <div class="page-head">
+        <div>
+            <div class="kicker">Видеоаналитика</div>
+            <h1>Аналитика</h1>
+            <p class="subtitle">Статистика сработок по камерам и разделам. Нажмите на счётчик, чтобы открыть события.</p>
+        </div>
+        <div class="head-actions">
+            <span class="updated" id="updated">загрузка…</span>
+            <button type="button" class="refresh" id="refresh">Обновить</button>
+        </div>
     </div>
 
-    <div class="sep"></div>
+    <section class="summary" id="summary" aria-label="Счётчики сработок">
+        <div class="stat total">
+            <span class="stat-label">Всего сработок за сегодня</span>
+            <b class="stat-value" id="total-count">0</b>
+            <span class="stat-foot">по всем активным камерам</span>
+            <div class="stat-bar"><i style="width:100%"></i></div>
+        </div>
+        <button class="stat" type="button" data-cat="plate" data-label="Номера">
+            <span class="stat-label">Номера</span>
+            <b class="stat-value" data-count="plate">0</b>
+            <span class="stat-foot">распознанные пластины</span>
+            <div class="stat-bar"><i style="background:var(--plate)"></i></div>
+        </button>
+        <button class="stat" type="button" data-cat="person" data-label="Люди">
+            <span class="stat-label">Люди</span>
+            <b class="stat-value" data-count="person">0</b>
+            <span class="stat-foot">обнаружение людей</span>
+            <div class="stat-bar"><i style="background:var(--person)"></i></div>
+        </button>
+        <button class="stat" type="button" data-cat="vehicle" data-label="Машины">
+            <span class="stat-label">Машины</span>
+            <b class="stat-value" data-count="vehicle">0</b>
+            <span class="stat-foot">транспорт</span>
+            <div class="stat-bar"><i style="background:var(--vehicle)"></i></div>
+        </button>
+        <button class="stat" type="button" data-cat="animal" data-label="Животные">
+            <span class="stat-label">Животные</span>
+            <b class="stat-value" data-count="animal">0</b>
+            <span class="stat-foot">животные</span>
+            <div class="stat-bar"><i style="background:var(--animal)"></i></div>
+        </button>
+    </section>
 
-    <div class="group">
-        <span class="group-label">Сортировка:</span>
-        <select id="sort-select">
-            <option value="events-desc">По событиям ↓</option>
-            <option value="events-asc">По событиям ↑</option>
-            <option value="last-desc">По последнему событию ↓</option>
-            <option value="name-asc">По имени A→Я</option>
-            <option value="name-desc">По имени Я→А</option>
-        </select>
-    </div>
+    <section class="table-card">
+        <div class="table-head">
+            <div>
+                <h2>Сработки по камерам</h2>
+                <p id="table-subtitle">Данные за сегодня</p>
+                <p class="table-hint">Клик по строке — группировка по камере; клик по числу — по объекту.</p>
+            </div>
+            <div class="legend">
+                <span style="color:var(--plate)"><i class="dot"></i> номера</span>
+                <span style="color:var(--person)"><i class="dot"></i> люди</span>
+                <span style="color:var(--vehicle)"><i class="dot"></i> машины</span>
+                <span style="color:var(--animal)"><i class="dot"></i> животные</span>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table id="stats-table">
+                <thead>
+                    <tr>
+                        <th>Камера</th><th>Всего</th><th>Номера</th><th>Люди</th>
+                        <th>Машины</th><th>Животные</th><th>Другое</th><th>Последняя сработка</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td colspan="8" class="empty">Загрузка…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
 
-    <div class="group">
-        <label class="check">
-            <input id="filter-events" type="checkbox">
-            Только с событиями
-        </label>
-    </div>
-
-    <div class="group">
-        <label class="check">
-            <input id="compact-mode" type="checkbox">
-            Компактно
-        </label>
-    </div>
-
-    <div class="right">
-        <label class="check">
-            <input id="auto" type="checkbox" checked>
-            авто (5с)
-        </label>
-        <button id="refresh" class="primary">Обновить</button>
-        <span id="status"></span>
-    </div>
-</div>
-
-<div id="grid" class="empty">Загрузка…</div>
-
-<footer>
-    <span>{{ app_footer }} · v{{ version }}</span>
-    <a href="{{ url_for('about_page') }}">О программе</a>
+<footer style="max-width:1500px;margin:0 auto;padding:0 24px 22px;color:var(--muted);font-size:9px">
+    {{ app_footer }} · v{{ version }}
 </footer>
-<script>
-window.CURRENT_CONFIG = {{ cfg | tojson }};
-</script>
 
 <script>
 (function () {
-    const grid       = document.getElementById('grid');
-    const autoEl     = document.getElementById('auto');
-    const statusEl   = document.getElementById('status');
-    const statCams   = document.getElementById('stat-cameras');
-    const statEvents = document.getElementById('stat-events');
-    const statDate   = document.getElementById('stat-date');
-    const sortSel    = document.getElementById('sort-select');
-    const filterEv   = document.getElementById('filter-events');
-    const compactChk = document.getElementById('compact-mode');
-    const layoutBtns = document.querySelectorAll('.layout-btn');
-
+    const summary = document.getElementById('summary');
+    const table = document.getElementById('stats-table');
+    const tbody = table.querySelector('tbody');
+    const updated = document.getElementById('updated');
+    const totalEl = document.getElementById('total-count');
+    const tableSubtitle = document.getElementById('table-subtitle');
+    const CATS = ['plate', 'person', 'vehicle', 'animal'];
     let timer = null;
-    let lastSummary = null;
-    let lastActive  = null;
 
-    // Настройки вида хранятся в localStorage, чтобы не сбрасывались при F5
-    const LS_KEY = 'vhs_analytics_view_v1';
-
-    const CAT_EMOJI = {
-        plate: '🚗', person: '👤', vehicle: '🚙', animal: '🐻', object: '📦'
-    };
-
-    // Русские названия классов, если в событии нет label_ru
-    const LABEL_RU = {
-        person: 'человек',
-        bicycle: 'велосипед', car: 'автомобиль', motorcycle: 'мотоцикл',
-        bus: 'автобус', truck: 'грузовик', train: 'поезд',
-        bird: 'птица', cat: 'кошка', dog: 'собака',
-        horse: 'лошадь', sheep: 'овца', cow: 'корова',
-        elephant: 'слон', bear: 'медведь', zebra: 'зебра', giraffe: 'жираф'
-    };
-
-    function escapeHtml(s) {
-        return String(s == null ? '' : s)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
     }
 
-    function labelRu(event) {
-        if (!event) return '?';
-        if (event.label_ru) return event.label_ru;
-        const lbl = String(event.label || event.plate || '?').toLowerCase();
-        return LABEL_RU[lbl] || event.label || event.plate || '?';
+    function timeOf(iso) {
+        const text = String(iso || '');
+        return text.length >= 19 ? text.slice(11, 19) : text.slice(-8);
     }
 
-    function streamIdFromUrl(url) {
-        if (!url) return '';
-        let clean = String(url).split('?')[0].split('#')[0];
-        clean = clean.replace(/\/+$/, '');
-        const parts = clean.split('/').filter(Boolean);
-        return parts.length ? parts[parts.length - 1] : '';
+    function linkFor(category, cameraId) {
+        const params = new URLSearchParams({group: 'category'});
+        if (category) params.set('category', category);
+        if (cameraId) params.set('camera_id', cameraId);
+        return '/events?' + params.toString();
     }
 
-    function isAnalyticsEnabled(cfg, sid) {
-        if (!sid) return false;
-        const cams = (cfg.analytics && cfg.analytics.cameras) || {};
-        let entry = cams[sid];
-        if (!entry) entry = cams['default'] || { enabled: false };
-        return entry.enabled !== false;
+    function cameraLink(cameraId) {
+        return '/events?' + new URLSearchParams({group: 'camera', camera_id: cameraId}).toString();
     }
 
-    // ---------- Сохранение/загрузка вида ----------
-    function loadView() {
-        try {
-            return JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {};
-        } catch (e) { return {}; }
-    }
-    function saveView() {
-        const v = {
-            layout: currentLayout,
-            sort: sortSel.value,
-            filterEvents: filterEv.checked,
-            compact: compactChk.checked,
-        };
-        try { localStorage.setItem(LS_KEY, JSON.stringify(v)); } catch (e) {}
+    function countLink(count, category, cameraId) {
+        const cls = 'count ' + category + (count ? '' : ' zero');
+        if (!count) return '<span class="' + cls + '">0</span>';
+        return '<a class="' + cls + '" href="' + linkFor(category, cameraId) + '">' + count + '</a>';
     }
 
-    let currentLayout = 'auto';
-
-    function applyLayout(name) {
-        currentLayout = name;
-        grid.classList.remove('layout-auto', 'layout-1x1', 'layout-2x2', 'layout-3x3', 'layout-4x4');
-        grid.classList.add('layout-' + name);
-        layoutBtns.forEach(b => {
-            b.classList.toggle('active', b.dataset.layout === name);
+    function render(data) {
+        const cameras = Object.values(data.cameras || {})
+            .sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0));
+        const totals = {plate: 0, person: 0, vehicle: 0, animal: 0, object: 0};
+        let all = 0;
+        cameras.forEach(cam => {
+            all += Number(cam.total) || 0;
+            Object.entries(cam.by_category || {}).forEach(([cat, n]) => {
+                totals[cat] = (totals[cat] || 0) + (Number(n) || 0);
+            });
         });
-    }
-
-    function applyCompact(on) {
-        grid.classList.toggle('compact', !!on);
-    }
-
-    // ---------- Lazy-load iframe через IntersectionObserver ----------
-    const io = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (!entry.isIntersecting) return;
-            const cell = entry.target;
-            if (cell.dataset.loaded === '1') return;
-            const hint = cell.querySelector('.lazy-hint');
-            const videoWrap = cell.querySelector('.video-wrap');
-            if (!videoWrap) return;
-            const url = cell.dataset.url;
-            if (!url) return;
-            const iframe = document.createElement('iframe');
-            iframe.src = url;
-            iframe.setAttribute('allow', 'autoplay; fullscreen');
-            iframe.setAttribute('scrolling', 'no');
-            iframe.setAttribute('frameborder', '0');
-            videoWrap.appendChild(iframe);
-            if (hint) hint.remove();
-            cell.dataset.loaded = '1';
-            io.unobserve(cell);
+        totalEl.textContent = all;
+        CATS.forEach(cat => {
+            const value = document.querySelector('[data-count="' + cat + '"]');
+            if (value) value.textContent = totals[cat] || 0;
         });
-    }, { root: grid, rootMargin: '200px' });
+        const max = Math.max(1, ...CATS.map(cat => totals[cat] || 0));
+        summary.querySelectorAll('.stat[data-cat]').forEach(card => {
+            const cat = card.dataset.cat;
+            const bar = card.querySelector('.stat-bar > i');
+            if (bar) bar.style.width = Math.round(((totals[cat] || 0) / max) * 100) + '%';
+        });
+        tableSubtitle.textContent = 'Данные за ' + (data.date || 'сегодня') + ' · камер: ' + cameras.length;
 
-    // ---------- Построение списка активных камер ----------
-    function buildActiveStreams(cfg) {
-        const streams = (cfg.streams || []).filter(s => s.enabled !== false);
-        return streams
-            .map(s => {
-                const sid = streamIdFromUrl(s.url || '');
-                return {
-                    sid,
-                    name: s.name || sid || 'Поток',
-                    url: s.url,
-                    analytics: isAnalyticsEnabled(cfg, sid),
-                };
-            })
-            .filter(s => s.analytics && s.sid);
-    }
-
-    // ---------- Сортировка и фильтрация ----------
-    function orderStreams(streams, summary) {
-        const cams = (summary && summary.cameras) || {};
-        const sort = sortSel.value;
-        const onlyWithEvents = filterEv.checked;
-
-        let list = streams.slice();
-
-        if (onlyWithEvents) {
-            list = list.filter(s => (cams[s.sid] && cams[s.sid].total > 0));
-        }
-
-        const tsOf = s => {
-            const le = cams[s.sid] && cams[s.sid].last_event;
-            return le ? (le.ts || 0) : 0;
-        };
-        const totalOf = s => (cams[s.sid] && cams[s.sid].total) || 0;
-
-        switch (sort) {
-            case 'events-desc':
-                list.sort((a, b) => totalOf(b) - totalOf(a) || a.name.localeCompare(b.name));
-                break;
-            case 'events-asc':
-                list.sort((a, b) => totalOf(a) - totalOf(b) || a.name.localeCompare(b.name));
-                break;
-            case 'last-desc':
-                list.sort((a, b) => tsOf(b) - tsOf(a) || a.name.localeCompare(b.name));
-                break;
-            case 'name-asc':
-                list.sort((a, b) => a.name.localeCompare(b.name));
-                break;
-            case 'name-desc':
-                list.sort((a, b) => b.name.localeCompare(a.name));
-                break;
-        }
-        return list;
-    }
-
-    // ---------- Рендер ----------
-    function buildCell(stream) {
-        const cell = document.createElement('div');
-        cell.className = 'an-cell';
-        cell.dataset.sid = stream.sid;
-        cell.dataset.url = stream.url || '';
-        cell.dataset.loaded = '0';
-
-        cell.innerHTML =
-            '<div class="video-wrap">' +
-                '<div class="cam-label">' + escapeHtml(stream.name) + '</div>' +
-                '<div class="lazy-hint">— видео загрузится при прокрутке —</div>' +
-            '</div>' +
-            '<div class="stats-bar">' +
-                '<span class="total-badge" data-role="total">0</span>' +
-                '<span class="cat-chips" data-role="chips"></span>' +
-                '<span class="last-event" data-role="last">' +
-                    '<span class="no-events">нет событий</span>' +
-                '</span>' +
-            '</div>';
-
-        io.observe(cell);
-        return cell;
-    }
-
-    function updateCellStats(cell, data) {
-        cell.querySelector('[data-role="total"]').textContent = data.total || 0;
-
-        const chipsEl = cell.querySelector('[data-role="chips"]');
-        const cats = data.by_category || {};
-        chipsEl.innerHTML = Object.keys(cats)
-            .filter(c => cats[c] > 0)
-            .sort((a, b) => cats[b] - cats[a])
-            .map(cat => {
-                const safe = ['plate','person','vehicle','animal','object'].includes(cat)
-                    ? cat : 'object';
-                const emoji = CAT_EMOJI[cat] || '📦';
-                return '<span class="cat-mini cat-' + safe + '">' +
-                    emoji + ' ' + cats[cat] + '</span>';
-            }).join('');
-
-        const lastEl = cell.querySelector('[data-role="last"]');
-        if (data.last_event) {
-            const le = data.last_event;
-            const emoji = CAT_EMOJI[le.category] || '📦';
-            const ru = labelRu(le);
-            lastEl.innerHTML =
-                '<span class="le-time">' +
-                    escapeHtml((le.iso || '').slice(-8)) +
-                '</span>' +
-                '<span class="le-label">' +
-                    emoji + ' ' + escapeHtml(ru) +
-                '</span>';
-        } else {
-            lastEl.innerHTML = '<span class="no-events">нет событий</span>';
-        }
-    }
-
-    function renderGrid(streams, summary) {
-        const cams = (summary && summary.cameras) || {};
-
-        if (streams.length === 0) {
-            grid.className = 'empty';
-            grid.innerHTML =
-                (filterEv.checked && lastActive && lastActive.length > 0)
-                    ? 'Событий за сегодня пока нет ни на одной камере. Снимите «Только с событиями», чтобы увидеть все.'
-                    : 'Нет камер с включённой аналитикой. Откройте «Настройки» на главной и включите аналитику у нужного потока.';
+        if (!cameras.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="empty">За сегодня сработок аналитики пока нет.</td></tr>';
             return;
         }
 
-        grid.className = '';
-        grid.classList.add('layout-' + currentLayout);
-        applyCompact(compactChk.checked);
+        tbody.innerHTML = cameras.map(cam => {
+            const by = cam.by_category || {};
+            const other = Object.entries(by)
+                .filter(([cat]) => !CATS.includes(cat))
+                .reduce((sum, [, n]) => sum + (Number(n) || 0), 0);
+            const last = cam.last_event;
+            const lastHtml = last
+                ? '<b>' + esc(last.label_ru || last.label || last.category || '') + '</b>' + timeOf(last.iso)
+                : '<span class="count zero">—</span>';
+            return '<tr class="camera-row" tabindex="0" role="link" data-href="' + cameraLink(cam.camera_id) + '">' +
+                '<td><a class="camera-name" href="' + cameraLink(cam.camera_id) + '" style="color:inherit;text-decoration:none">' +
+                    esc(cam.camera_name || cam.camera_id) + '</a>' +
+                    '<span class="camera-id">' + esc(cam.camera_id) + '</span></td>' +
+                '<td><a class="total-count" href="' + cameraLink(cam.camera_id) + '" style="color:inherit;text-decoration:none">' + (cam.total || 0) + '</a></td>' +
+                CATS.map(cat => '<td>' + countLink(Number(by[cat]) || 0, cat, cam.camera_id) + '</td>').join('') +
+                '<td>' + countLink(other, 'object', cam.camera_id) + '</td>' +
+                '<td class="last">' + lastHtml + '</td>' +
+                '</tr>';
+        }).join('');
 
-        const wantedIds = streams.map(s => s.sid);
-        const existingIds = Array.from(grid.querySelectorAll('.an-cell')).map(c => c.dataset.sid);
-        const sameSet =
-            existingIds.length === wantedIds.length &&
-            wantedIds.every((id, i) => existingIds[i] === id);
-
-        if (!sameSet) {
-            grid.querySelectorAll('.an-cell').forEach(c => io.unobserve(c));
-            grid.innerHTML = '';
-            streams.forEach(s => grid.appendChild(buildCell(s)));
-        }
-
-        streams.forEach(s => {
-            const cell = grid.querySelector('.an-cell[data-sid="' + s.sid + '"]');
-            if (!cell) return;
-            const data = cams[s.sid] || { total: 0, by_category: {}, last_event: null };
-            updateCellStats(cell, data);
-
-            const prev = cell.dataset.lastTs ? parseFloat(cell.dataset.lastTs) : 0;
-            const cur = (data.last_event && data.last_event.ts) || 0;
-            if (cur > prev && prev > 0) {
-                cell.classList.remove('pulse');
-                void cell.offsetWidth;
-                cell.classList.add('pulse');
-                setTimeout(() => cell.classList.remove('pulse'), 1600);
-            }
-            cell.dataset.lastTs = String(cur);
+        tbody.querySelectorAll('tr.camera-row').forEach(row => {
+            row.addEventListener('click', event => {
+                if (event.target.closest('a')) return;
+                window.location.href = row.dataset.href;
+            });
+            row.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    window.location.href = row.dataset.href;
+                }
+            });
         });
     }
 
-    // ---------- Загрузка ----------
     async function load() {
-        statusEl.textContent = 'обновление…';
+        updated.textContent = 'обновление…';
         try {
-            const r = await fetch('/api/analytics/summary', {
-                headers: { 'Accept': 'application/json' },
+            const response = await fetch('/api/analytics/summary', {
+                headers: {Accept: 'application/json'},
                 credentials: 'same-origin',
             });
-            if (r.status === 401) { window.location.href = '/login'; return; }
-            const summary = await r.json();
-
-            const cfg = window.CURRENT_CONFIG || {};
-            const active = buildActiveStreams(cfg);
-            lastActive = active;
-            lastSummary = summary;
-
-            const ordered = orderStreams(active, summary);
-            renderGrid(ordered, summary);
-
-            statCams.textContent = active.length;
-            statEvents.textContent = summary.events_scanned || 0;
-            statDate.textContent = summary.date || 'сегодня';
-
-            statusEl.textContent = 'обновлено: ' + new Date().toLocaleTimeString();
+            if (response.status === 401) { window.location.href = '/login'; return; }
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const data = await response.json();
+            render(data);
+            updated.textContent = 'обновлено ' + new Date().toLocaleTimeString();
         } catch (err) {
-            statusEl.textContent = 'ошибка: ' + err.message;
+            updated.textContent = 'ошибка: ' + err.message;
+            tbody.innerHTML = '<tr><td colspan="8" class="empty">Не удалось загрузить статистику: ' + esc(err.message) + '</td></tr>';
         }
     }
 
-    // ---------- Автообновление ----------
-    function schedule() {
-        if (timer) { clearInterval(timer); timer = null; }
-        if (autoEl.checked) timer = setInterval(load, 5000);
-    }
-
-    // ---------- Обработчики ----------
-    layoutBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            applyLayout(btn.dataset.layout);
-            saveView();
-            if (lastActive && lastSummary) {
-                renderGrid(orderStreams(lastActive, lastSummary), lastSummary);
-            }
+    document.getElementById('refresh').addEventListener('click', load);
+    summary.querySelectorAll('.stat[data-cat]').forEach(card => {
+        card.addEventListener('click', () => {
+            window.location.href = linkFor(card.dataset.cat);
         });
     });
-
-    sortSel.addEventListener('change', () => {
-        saveView();
-        if (lastActive && lastSummary) {
-            renderGrid(orderStreams(lastActive, lastSummary), lastSummary);
-        }
-    });
-
-    filterEv.addEventListener('change', () => {
-        saveView();
-        if (lastActive && lastSummary) {
-            renderGrid(orderStreams(lastActive, lastSummary), lastSummary);
-        }
-    });
-
-    compactChk.addEventListener('change', () => {
-        applyCompact(compactChk.checked);
-        saveView();
-    });
-
-    autoEl.addEventListener('change', schedule);
-    document.getElementById('refresh').addEventListener('click', load);
-
-    // ---------- Инициализация ----------
-    (function initFromStorage() {
-        const v = loadView();
-        applyLayout(v.layout || 'auto');
-        sortSel.value = v.sort || 'events-desc';
-        filterEv.checked = !!v.filterEvents;
-        compactChk.checked = !!v.compact;
-        applyCompact(compactChk.checked);
-    })();
-
     load();
-    schedule();
+    timer = setInterval(load, 5000);
+    window.addEventListener('beforeunload', () => clearInterval(timer));
 })();
 </script>
 </body>

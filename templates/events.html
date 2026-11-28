@@ -179,6 +179,171 @@
             background: var(--panel); border-radius: 8px;
         }
 
+        .event-group { margin-bottom: 18px; }
+        .event-group-head {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            margin: 0 0 7px;
+            color: var(--text);
+            font-size: 0.95em;
+            font-weight: 700;
+        }
+        .event-group-head .group-count {
+            min-width: 24px;
+            padding: 2px 7px;
+            border: 1px solid var(--border);
+            border-radius: 11px;
+            color: var(--muted);
+            font-size: 0.78em;
+            font-weight: 400;
+        }
+        .event-group-head .group-mark {
+            width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+        }
+        .event-group-head .group-mark.plate { background: var(--cat-plate); }
+        .event-group-head .group-mark.person { background: var(--cat-person); }
+        .event-group-head .group-mark.vehicle { background: var(--cat-vehicle); }
+        .event-group-head .group-mark.animal { background: var(--cat-animal); }
+        .event-group-head .group-mark.object { background: var(--cat-object); }
+        .event-group table { margin: 0; }
+
+        /* ---------- Галерея снапшотов ---------- */
+        .snap-open {
+            background: transparent;
+            border: 0;
+            padding: 0;
+            color: var(--accent);
+            font: inherit;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        .snap-open:hover { color: #8ee8f2; }
+        .snap-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+            background: rgba(2, 8, 12, .88);
+            backdrop-filter: blur(3px);
+        }
+        .snap-modal.open { display: flex; }
+        .snap-dialog {
+            width: min(1120px, 96vw);
+            max-height: 94vh;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            background: #081820;
+            box-shadow: 0 24px 70px rgba(0, 0, 0, .6);
+            overflow: hidden;
+        }
+        .snap-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 14px;
+            border-bottom: 1px solid var(--border);
+        }
+        .snap-head-title {
+            min-width: 0;
+            flex: 1;
+            color: var(--text);
+            font-size: 0.95em;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .snap-counter {
+            color: var(--muted);
+            font-size: 0.78em;
+            white-space: nowrap;
+        }
+        .snap-head-close {
+            width: 28px;
+            height: 28px;
+            border: 1px solid #6b3038;
+            border-radius: 4px;
+            background: #6b3038;
+            color: #ffd9dc;
+            cursor: pointer;
+        }
+        .snap-body {
+            position: relative;
+            min-height: 200px;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #03090d;
+        }
+        .snap-body img {
+            display: block;
+            max-width: 100%;
+            max-height: 68vh;
+            object-fit: contain;
+        }
+        .snap-body .snap-loading,
+        .snap-body .snap-error {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: var(--muted);
+            font-size: 0.85em;
+            text-align: center;
+            background: rgba(3, 9, 13, .8);
+        }
+        .snap-body .snap-error { color: #ffb4b4; }
+        .snap-body .snap-loading[hidden],
+        .snap-body .snap-error[hidden] { display: none; }
+        .snap-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 38px;
+            height: 54px;
+            border: 1px solid #3b6677;
+            border-radius: 5px;
+            background: rgba(7, 20, 28, .88);
+            color: var(--accent);
+            font-size: 28px;
+            line-height: 1;
+            cursor: pointer;
+            z-index: 2;
+        }
+        .snap-nav:hover { background: var(--accent); color: #04151b; }
+        .snap-nav:disabled { opacity: .25; cursor: default; }
+        .snap-nav.prev { left: 12px; }
+        .snap-nav.next { right: 12px; }
+        .snap-meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px 16px;
+            padding: 9px 14px;
+            border-top: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.78em;
+        }
+        .snap-meta b { color: var(--text); }
+        .snap-meta a { color: var(--accent); text-decoration: none; }
+        .snap-meta a:hover { text-decoration: underline; }
+        @media (max-width: 700px) {
+            .snap-modal { padding: 8px; }
+            .snap-nav { width: 30px; height: 44px; font-size: 22px; }
+            .snap-body img { max-height: 64vh; }
+            .snap-head { padding: 8px 10px; }
+        }
+
         footer {
             text-align: center; color: var(--muted);
             font-size: 0.85em; padding: 24px;
@@ -198,7 +363,7 @@
             <div class="filter-chips" id="cat-chips">
                 <label class="chip chip-plate"><input type="checkbox" value="plate"> 🚗 Номера</label>
                 <label class="chip chip-person"><input type="checkbox" value="person"> 👤 Люди</label>
-                <label class="chip chip-vehicle"><input type="checkbox" value="vehicle"> 🚙 Транспорт</label>
+                <label class="chip chip-vehicle"><input type="checkbox" value="vehicle"> 🚙 Машины</label>
                 <label class="chip chip-animal"><input type="checkbox" value="animal"> 🐻 Животные</label>
                 <label class="chip chip-object"><input type="checkbox" value="object"> 📦 Объекты</label>
             </div>
@@ -208,6 +373,15 @@
             <label class="title" for="camera-select">Камера</label>
             <select id="camera-select">
                 <option value="">— все камеры —</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label class="title" for="group-select">Группировка</label>
+            <select id="group-select">
+                <option value="category">По объектам</option>
+                <option value="camera">По камерам</option>
+                <option value="none">Без группировки</option>
             </select>
         </div>
 
@@ -241,6 +415,27 @@
     </div>
 </main>
 
+<div class="snap-modal" id="snap-modal" aria-hidden="true">
+    <div class="snap-dialog" role="dialog" aria-modal="true" aria-label="Просмотр снапшота">
+        <div class="snap-head">
+            <div class="snap-head-title" id="snap-title">Снапшот</div>
+            <div class="snap-counter" id="snap-counter"></div>
+            <button type="button" class="snap-head-close" id="snap-close" title="Закрыть (Esc)">✕</button>
+        </div>
+        <div class="snap-body">
+            <button type="button" class="snap-nav prev" id="snap-prev" title="Предыдущий (←)">‹</button>
+            <img id="snap-image" alt="Снапшот события">
+            <div class="snap-loading" id="snap-loading">загрузка…</div>
+            <div class="snap-error" id="snap-error" hidden></div>
+            <button type="button" class="snap-nav next" id="snap-next" title="Следующий (→)">›</button>
+        </div>
+        <div class="snap-meta">
+            <span id="snap-meta"></span>
+            <a id="snap-original" href="#" target="_blank" rel="noopener">Открыть оригинал</a>
+        </div>
+    </div>
+</div>
+
 <footer>{{ app_footer }} · v{{ version }}</footer>
 
 <script>
@@ -252,17 +447,20 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
     const limitEl    = document.getElementById('limit');
     const autoEl     = document.getElementById('auto');
     const cameraSel  = document.getElementById('camera-select');
+    const groupSel   = document.getElementById('group-select');
     const searchEl   = document.getElementById('search-input');
     const chipsWrap  = document.getElementById('cat-chips');
 
     if (!contentEl || !statusEl || !limitEl || !autoEl ||
-        !cameraSel || !searchEl || !chipsWrap) {
+        !cameraSel || !groupSel || !searchEl || !chipsWrap) {
         console.error('events.html: не найдены ключевые DOM-элементы. ' +
                       'Проверьте, что файл собран из Части 1/2 + Части 2/2.');
         return;
     }
 
     let timer = null;
+    let galleryEvents = [];
+    let galleryIndex = -1;
 
     const CAT_EMOJI = {
         plate: '🚗', person: '👤', vehicle: '🚙', animal: '🐻', object: '📦'
@@ -270,7 +468,7 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
 
     // Русские названия категорий — для чипов и заголовков
     const CAT_RU = {
-        plate: 'Номера', person: 'Люди', vehicle: 'Транспорт',
+        plate: 'Номера', person: 'Люди', vehicle: 'Машины',
         animal: 'Животные', object: 'Объекты'
     };
 
@@ -340,7 +538,46 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
         return params.toString();
     }
 
-    // ---------- рендер таблицы ----------
+    // ---------- рендер таблицы с группировкой ----------
+    function eventRow(e) {
+        const snap = e.snapshot
+            ? '<button type="button" class="snap-open" data-snapshot="' +
+              escapeHtml(e.snapshot) + '">открыть</button>'
+            : '—';
+        const conf = (typeof e.confidence === 'number')
+            ? e.confidence.toFixed(2) : '—';
+        const cat = (e.category || (e.plate ? 'plate' : 'object')).toLowerCase();
+        const emoji = CAT_EMOJI[cat] || '📦';
+        const ru = labelRu(e);
+        const raw = e.label || e.plate || '';
+        const showEn = raw && raw !== ru && cat !== 'plate';
+        const what = emoji + ' <span class="label-ru">' + escapeHtml(ru) + '</span>' +
+            (showEn ? ' <span class="label-en">(' + escapeHtml(raw) + ')</span>' : '') +
+            ' ' + catBadge(cat);
+        const actionsCell = IS_ADMIN
+            ? '<td class="actions"><button class="btn-del" data-ts="' + e.ts + '" title="Удалить событие">🗑</button></td>'
+            : '';
+        return '<tr>' +
+            '<td>' + escapeHtml(e.iso) + '</td>' +
+            '<td>' + escapeHtml(e.camera_name) + '</td>' +
+            '<td>' + what + '</td>' +
+            '<td class="conf">' + conf + '</td>' +
+            '<td class="snapshot">' + snap + '</td>' +
+            actionsCell +
+            '</tr>';
+    }
+
+    function tableFor(events) {
+        const actionsHead = IS_ADMIN ? '<th style="width:80px">Действия</th>' : '';
+        return '<table>' +
+            '<thead><tr>' +
+                '<th>Время</th><th>Камера</th><th>Что</th>' +
+                '<th>Уверенность</th><th>Снапшот</th>' + actionsHead +
+            '</tr></thead>' +
+            '<tbody>' + events.map(eventRow).join('') + '</tbody>' +
+            '</table>';
+    }
+
     function render(events) {
         if (!events.length) {
             contentEl.innerHTML =
@@ -349,60 +586,146 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
             return;
         }
 
-        const rows = events.slice().reverse().map(e => {
-            const snap = e.snapshot
-                ? '<a href="/snapshot/' + encodeURI(escapeHtml(e.snapshot)) +
-                  '" target="_blank">открыть</a>'
-                : '—';
-            const conf = (typeof e.confidence === 'number')
-                ? e.confidence.toFixed(2) : '—';
-            const cat = (e.category || (e.plate ? 'plate' : 'object')).toLowerCase();
-            const emoji = CAT_EMOJI[cat] || '📦';
-            const ru = labelRu(e);
-            const raw = e.label || e.plate || '';
-            const showEn = raw && raw !== ru && cat !== 'plate';
+        const ordered = events.slice().reverse();
+        const mode = groupSel.value || 'category';
+        let displayEvents = ordered;
+        if (mode === 'none') {
+            contentEl.innerHTML = tableFor(ordered);
+        } else {
+            const groups = new Map();
+            ordered.forEach(e => {
+                const cat = (e.category || (e.plate ? 'plate' : 'object')).toLowerCase();
+                const key = mode === 'camera'
+                    ? (e.camera_name || e.camera_id || 'Без камеры')
+                    : cat;
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(e);
+            });
+            const order = ['plate', 'person', 'vehicle', 'animal', 'object'];
+            const entries = [...groups.entries()].sort((a, b) => {
+                if (mode === 'camera') return String(a[0]).localeCompare(String(b[0]), 'ru');
+                return order.indexOf(a[0]) - order.indexOf(b[0]);
+            });
+            displayEvents = entries.flatMap(([, items]) => items);
+            contentEl.innerHTML = entries.map(([key, items]) => {
+                const title = mode === 'camera' ? ('Камера · ' + key) : (CAT_RU[key] || key);
+                const mark = mode === 'camera' ? '' : key;
+                return '<section class="event-group">' +
+                    '<div class="event-group-head">' +
+                        '<i class="group-mark ' + escapeHtml(mark) + '"></i>' +
+                        '<span>' + escapeHtml(title) + '</span>' +
+                        '<span class="group-count">' + items.length + '</span>' +
+                    '</div>' + tableFor(items) + '</section>';
+            }).join('');
+        }
 
-            const what = emoji + ' <span class="label-ru">' + escapeHtml(ru) + '</span>' +
-                (showEn ? ' <span class="label-en">(' + escapeHtml(raw) + ')</span>' : '') +
-                ' ' + catBadge(cat);
-
-            const actionsCell = IS_ADMIN
-                ? '<td class="actions">' +
-                    '<button class="btn-del" data-ts="' + e.ts + '" ' +
-                    'title="Удалить событие">🗑</button>' +
-                  '</td>'
-                : '';
-
-            return '<tr>' +
-                '<td>' + escapeHtml(e.iso) + '</td>' +
-                '<td>' + escapeHtml(e.camera_name) + '</td>' +
-                '<td>' + what + '</td>' +
-                '<td class="conf">' + conf + '</td>' +
-                '<td class="snapshot">' + snap + '</td>' +
-                actionsCell +
-                '</tr>';
-        }).join('');
-
-        const actionsHead = IS_ADMIN ? '<th style="width:80px">Действия</th>' : '';
-        contentEl.innerHTML =
-            '<table>' +
-            '<thead><tr>' +
-                '<th>Время</th>' +
-                '<th>Камера</th>' +
-                '<th>Что</th>' +
-                '<th>Уверенность</th>' +
-                '<th>Снапшот</th>' +
-                actionsHead +
-            '</tr></thead>' +
-            '<tbody>' + rows + '</tbody>' +
-            '</table>';
+        galleryEvents = displayEvents;
+        if (galleryIndex >= galleryEvents.length) galleryIndex = galleryEvents.length - 1;
+        const snapModal = document.getElementById('snap-modal');
+        if (snapModal && snapModal.classList.contains('open')) {
+            const currentPath = snapModal.dataset.currentPath;
+            const nextIndex = galleryEvents.findIndex(e => e.snapshot === currentPath);
+            if (nextIndex >= 0) showSnapshot(nextIndex);
+            else closeSnapshot();
+        } else if (galleryIndex < 0 && galleryEvents.length) {
+            galleryIndex = -1;
+        }
 
         if (IS_ADMIN) {
             contentEl.querySelectorAll('.btn-del').forEach(btn => {
                 btn.addEventListener('click', onDeleteClick);
             });
         }
+        contentEl.querySelectorAll('.snap-open').forEach(btn => {
+            btn.addEventListener('click', () => openSnapshot(btn.dataset.snapshot));
+        });
     }
+
+    // ---------- галерея снапшотов ----------
+    function snapshotUrl(path) {
+        return '/snapshot/' + String(path || '').split('/').map(encodeURIComponent).join('/');
+    }
+
+    function closeSnapshot() {
+        const modal = document.getElementById('snap-modal');
+        if (!modal) return;
+        modal.classList.remove('open');
+        modal.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+        galleryIndex = -1;
+    }
+
+    function showSnapshot(index) {
+        if (!galleryEvents.length) { closeSnapshot(); return; }
+        galleryIndex = Math.max(0, Math.min(galleryEvents.length - 1, index));
+        const event = galleryEvents[galleryIndex];
+        if (!event || !event.snapshot) { closeSnapshot(); return; }
+
+        const modal = document.getElementById('snap-modal');
+        const image = document.getElementById('snap-image');
+        const loading = document.getElementById('snap-loading');
+        const error = document.getElementById('snap-error');
+        const title = document.getElementById('snap-title');
+        const counter = document.getElementById('snap-counter');
+        const meta = document.getElementById('snap-meta');
+        const original = document.getElementById('snap-original');
+        const prev = document.getElementById('snap-prev');
+        const next = document.getElementById('snap-next');
+        if (!modal || !image) return;
+
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+        modal.dataset.currentPath = event.snapshot;
+        document.body.style.overflow = 'hidden';
+        title.textContent = (CAT_RU[(event.category || (event.plate ? 'plate' : 'object')).toLowerCase()] || 'Снапшот') +
+            ' · ' + (event.camera_name || event.camera_id || 'камера');
+        counter.textContent = (galleryIndex + 1) + ' / ' + galleryEvents.length;
+        prev.disabled = galleryIndex <= 0;
+        next.disabled = galleryIndex >= galleryEvents.length - 1;
+        original.href = snapshotUrl(event.snapshot);
+        loading.hidden = false;
+        loading.textContent = 'загрузка…';
+        error.hidden = true;
+        error.textContent = '';
+        image.style.visibility = 'hidden';
+        image.onload = () => {
+            loading.hidden = true;
+            image.style.visibility = 'visible';
+        };
+        image.onerror = () => {
+            loading.hidden = true;
+            image.style.visibility = 'hidden';
+            error.hidden = false;
+            error.textContent = 'Не удалось загрузить снапшот';
+        };
+        image.src = snapshotUrl(event.snapshot);
+        const cat = (event.category || (event.plate ? 'plate' : 'object')).toLowerCase();
+        const confidence = (typeof event.confidence === 'number') ? event.confidence.toFixed(2) : '—';
+        meta.innerHTML = '<span><b>' + escapeHtml(event.camera_name || event.camera_id || '') + '</b> · ' +
+            escapeHtml(event.iso || '') + '</span><span>тип: <b>' + escapeHtml(CAT_RU[cat] || cat) +
+            '</b> · уверенность: <b>' + confidence + '</b></span>';
+    }
+
+    function openSnapshot(path) {
+        const index = galleryEvents.findIndex(e => e.snapshot === path);
+        if (index < 0) return;
+        showSnapshot(index);
+        document.getElementById('snap-close')?.focus();
+    }
+
+    document.getElementById('snap-close')?.addEventListener('click', closeSnapshot);
+    document.getElementById('snap-prev')?.addEventListener('click', () => showSnapshot(galleryIndex - 1));
+    document.getElementById('snap-next')?.addEventListener('click', () => showSnapshot(galleryIndex + 1));
+    document.getElementById('snap-modal')?.addEventListener('click', (event) => {
+        if (event.target.id === 'snap-modal') closeSnapshot();
+    });
+    document.addEventListener('keydown', (event) => {
+        const modal = document.getElementById('snap-modal');
+        if (!modal || !modal.classList.contains('open')) return;
+        if (event.key === 'Escape') { event.preventDefault(); closeSnapshot(); }
+        if (event.key === 'ArrowLeft') { event.preventDefault(); showSnapshot(galleryIndex - 1); }
+        if (event.key === 'ArrowRight') { event.preventDefault(); showSnapshot(galleryIndex + 1); }
+    });
 
     // ---------- удаление одного ----------
     async function onDeleteClick(ev) {
@@ -514,6 +837,7 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
         });
         updateChipStyles();
         cameraSel.value = '';
+        groupSel.value = 'category';
         searchEl.value = '';
         limitEl.value = '100';
         load();
@@ -535,9 +859,33 @@ const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
     if (clearBtn) clearBtn.addEventListener('click', onClearAll);
 
     // ---------- инициализация ----------
-    updateChipStyles();
-    loadCameras();
-    load();
+    function applyUrlFilters() {
+        const params = new URLSearchParams(window.location.search);
+        const cats = params.getAll('category')
+            .flatMap(value => String(value).split(','))
+            .map(value => value.trim())
+            .filter(Boolean);
+        if (cats.length) {
+            chipsWrap.querySelectorAll('input[type=checkbox]').forEach(cb => {
+                cb.checked = cats.includes(cb.value);
+            });
+        }
+        const group = params.get('group');
+        if (['category', 'camera', 'none'].includes(group)) groupSel.value = group;
+        const camera = params.get('camera_id');
+        if (camera && [...cameraSel.options].some(opt => opt.value === camera)) {
+            cameraSel.value = camera;
+        }
+        const search = params.get('search');
+        if (search) searchEl.value = search;
+        updateChipStyles();
+    }
+
+    groupSel.addEventListener('change', load);
+    loadCameras().then(() => {
+        applyUrlFilters();
+        load();
+    });
     schedule();
 })();
 </script>

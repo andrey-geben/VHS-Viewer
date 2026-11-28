@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ru">
 <head>
     <meta charset="utf-8">
@@ -137,8 +137,7 @@
         <a href="{{ url_for('events_page') }}">События</a>
         <a href="{{ url_for('analytics_page') }}">Аналитика</a>
         {% if user and user.role == 'admin' %}
-        <a href="{{ url_for('relay_page') }}">Реле</a>
-        <a href="{{ url_for('messaging_page') }}">Уведомления</a>
+        <span class="muted">Реле и уведомления перенесены в VHS-Security</span>
         <a href="{{ url_for('hardware_page') }}" class="active">Железо</a>
         {% endif %}
         <a href="{{ url_for('about_page') }}">О программе</a>

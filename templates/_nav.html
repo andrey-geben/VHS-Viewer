@@ -130,11 +130,9 @@
            class="vhs-nav-link{% if ep == 'events_page' %} active{% endif %}">События</a>
         <a href="{{ url_for('analytics_page') }}"
            class="vhs-nav-link{% if ep == 'analytics_page' %} active{% endif %}">Аналитика</a>
+        <a href="{{ url_for('archive_page') }}"
+           class="vhs-nav-link{% if ep == 'archive_page' %} active{% endif %}">Архив</a>
         {% if user and user.role == 'admin' %}
-        <a href="{{ url_for('relay_page') }}"
-           class="vhs-nav-link{% if ep == 'relay_page' %} active{% endif %}">Реле</a>
-        <a href="{{ url_for('messaging_page') }}"
-           class="vhs-nav-link{% if ep == 'messaging_page' %} active{% endif %}">Уведомления</a>
         <a href="{{ url_for('hardware_page') }}"
            class="vhs-nav-link{% if ep == 'hardware_page' %} active{% endif %}">Железо</a>
         {% endif %}

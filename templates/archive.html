@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Видеоархив — VHS-Viewer</title>
+    <style>
+        :root { --bg:#07141c; --panel:#0d222d; --line:#254556; --text:#e8f5f8; --muted:#8fa9b5; --accent:#49c6d4; --danger:#e05252; }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:Arial,sans-serif; background:var(--bg); color:var(--text); }
+        main { max-width:1450px; margin:0 auto; padding:20px 22px 36px; }
+        .head { display:flex; justify-content:space-between; align-items:flex-end; gap:14px; flex-wrap:wrap; margin-bottom:14px; }
+        .head h1 { margin:3px 0 0; font-size:26px; }
+        .head p { margin:6px 0 0; color:var(--muted); font-size:11px; }
+        .status { display:flex; gap:12px; flex-wrap:wrap; border:1px solid var(--line); background:var(--panel); border-radius:7px; padding:9px 12px; color:var(--muted); font-size:10px; }
+        .status b { color:var(--text); }
+        .filters { display:flex; gap:8px; flex-wrap:wrap; align-items:end; border:1px solid var(--line); background:var(--panel); border-radius:7px; padding:11px; margin-bottom:12px; }
+        .filters label { display:grid; gap:3px; color:var(--muted); font-size:9px; text-transform:uppercase; letter-spacing:.04em; }
+        input, select, button { font:inherit; }
+        input, select { background:#08151d; color:var(--text); border:1px solid #2e4657; border-radius:4px; padding:6px 8px; font-size:11px; }
+        button { border:1px solid #3b6677; background:#12303d; color:var(--accent); border-radius:4px; padding:6px 11px; cursor:pointer; font-size:11px; }
+        button:hover { background:var(--accent); color:#04151b; }
+        button.danger { border-color:#6b3038; background:#2a1115; color:#ffb1b1; }
+        .card { border:1px solid var(--line); background:var(--panel); border-radius:8px; overflow:hidden; }
+        table { width:100%; border-collapse:collapse; font-size:11px; }
+        th { background:#0a1b24; color:var(--muted); text-align:left; font-size:9px; text-transform:uppercase; letter-spacing:.05em; padding:9px 10px; border-bottom:1px solid #1b3543; white-space:nowrap; }
+        td { padding:9px 10px; border-bottom:1px solid #1b3543; vertical-align:middle; }
+        tr:last-child td { border-bottom:0; }
+        tbody tr:hover { background:rgba(73,198,212,.05); }
+        .file { font-family:Consolas,monospace; color:#cfeaf0; overflow-wrap:anywhere; }
+        .muted { color:var(--muted); }
+        .empty { padding:34px; text-align:center; color:var(--muted); font-size:12px; }
+        .snap-modal { position:fixed; inset:0; z-index:1000; display:none; align-items:center; justify-content:center; padding:16px; background:rgba(2,8,12,.9); }
+        .snap-modal.open { display:flex; }
+        .snap-dialog { width:min(1150px,97vw); background:#081820; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+        .snap-head { display:flex; align-items:center; gap:10px; padding:9px 12px; border-bottom:1px solid var(--line); }
+        .snap-head b { flex:1; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .snap-head button { width:28px; height:28px; padding:0; border-color:#6b3038; background:#6b3038; color:#ffd9dc; }
+        video { display:block; width:100%; max-height:72vh; background:#000; }
+        @media(max-width:700px){ main{padding:14px 10px} .head h1{font-size:22px} }
+    </style>
+</head>
+<body>
+{% include '_nav.html' %}
+<main>
+    <div class="head">
+        <div>
+            <div style="color:var(--accent);font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">Запись видео</div>
+            <h1>Видеоархив</h1>
+            <p>Клипы по событиям аналитики и непрерывная запись — в зависимости от настроек Viewer.</p>
+        </div>
+        <div class="status" id="archive-status"><span>Загрузка…</span></div>
+    </div>
+
+    <div class="filters">
+        <label>Камера<select id="f-camera"><option value="">все</option></select></label>
+        <label>Тип<select id="f-category">
+            <option value="">все</option><option value="plate">номера</option>
+            <option value="person">люди</option><option value="vehicle">машины</option>
+            <option value="animal">животные</option><option value="object">объекты</option>
+            <option value="continuous">непрерывно</option>
+        </select></label>
+        <label>Дата<input type="date" id="f-date"></label>
+        <button type="button" id="refresh">Обновить</button>
+        <span class="muted" id="count" style="margin-left:auto;font-size:10px"></span>
+    </div>
+
+    <div class="card">
+        <table>
+            <thead><tr><th>Дата и время</th><th>Камера</th><th>Тип</th><th>Файл</th><th>Размер</th><th></th></tr></thead>
+            <tbody id="clips"><tr><td colspan="6" class="empty">Загрузка…</td></tr></tbody>
+        </table>
+    </div>
+</main>
+
+<div class="snap-modal" id="video-modal" aria-hidden="true">
+    <div class="snap-dialog" role="dialog" aria-modal="true">
+        <div class="snap-head"><b id="video-title">Видео</b><button type="button" id="video-close" title="Закрыть">✕</button></div>
+        <video id="video" controls playsinline></video>
+    </div>
+</div>
+
+<script>
+(function(){
+    const $ = (s) => document.querySelector(s);
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const fmtSize = (n) => n >= 1024**3 ? (n/1024**3).toFixed(2)+' ГБ' : n >= 1024**2 ? (n/1024**2).toFixed(1)+' МБ' : Math.round(n/1024)+' КБ';
+    const CAT_RU = {plate:'номера', person:'люди', vehicle:'машины', animal:'животные', object:'объекты', continuous:'непрерывно'};
+    let clips = [];
+
+    async function loadStatus(){
+        try {
+            const r = await fetch('/api/archive/status', {credentials:'same-origin'});
+            if (r.status === 401) { location.href='/login'; return; }
+            const s = await r.json();
+            $('#archive-status').innerHTML =
+                '<span>Режим: <b>'+esc(s.mode || 'off')+'</b></span>'+
+                '<span>Папка: <b>'+esc(s.path || '—')+'</b></span>'+
+                '<span>Занято: <b>'+esc(s.used_gb ?? 0)+' ГБ</b> / '+esc(s.quota_gb ?? 0)+' ГБ</span>'+
+                '<span>Свободно: <b>'+esc(s.free_gb ?? 0)+' ГБ</b></span>'+
+                '<span>Клипов: <b>'+esc(s.clips ?? 0)+'</b></span>';
+        } catch(e) { $('#archive-status').innerHTML = '<span>Ошибка статуса: '+esc(e.message)+'</span>'; }
+    }
+
+    async function loadClips(){
+        const params = new URLSearchParams();
+        const camera = $('#f-camera').value;
+        const category = $('#f-category').value;
+        const date = $('#f-date').value;
+        if (camera) params.set('camera', camera);
+        if (category) params.set('category', category);
+        if (date) params.set('date', date);
+        try {
+            const r = await fetch('/api/archive/clips?'+params.toString(), {credentials:'same-origin'});
+            if (r.status === 401) { location.href='/login'; return; }
+            const data = await r.json();
+            clips = data.clips || [];
+            $('#count').textContent = 'найдено: ' + clips.length;
+            renderClips();
+        } catch(e) {
+            $('#clips').innerHTML = '<tr><td colspan="6" class="empty">Ошибка: '+esc(e.message)+'</td></tr>';
+        }
+    }
+
+    function renderClips(){
+        if (!clips.length) { $('#clips').innerHTML = '<tr><td colspan="6" class="empty">Записей нет. Проверьте настройки архива и события аналитики.</td></tr>'; return; }
+        $('#clips').innerHTML = clips.map((c, i) => '<tr>'+
+            '<td>'+esc(c.iso ? c.iso.replace('T',' ').slice(0,19) : '')+'</td>'+
+            '<td>'+esc(c.camera)+'</td>'+
+            '<td>'+esc(CAT_RU[c.category] || c.category || '—')+'</td>'+
+            '<td class="file">'+esc(c.name)+'</td>'+
+            '<td class="muted">'+fmtSize(c.size || 0)+'</td>'+
+            '<td><button type="button" data-play="'+i+'">Смотреть</button></td></tr>').join('');
+        $('#clips').querySelectorAll('[data-play]').forEach(btn => btn.addEventListener('click', () => openVideo(clips[Number(btn.dataset.play)])));
+    }
+
+    function openVideo(clip){
+        if (!clip) return;
+        const modal = $('#video-modal');
+        $('#video-title').textContent = clip.camera + ' · ' + (CAT_RU[clip.category] || clip.category || '') + ' · ' + clip.name;
+        $('#video').src = '/archive/file/' + clip.path.split('/').map(encodeURIComponent).join('/');
+        modal.classList.add('open'); modal.setAttribute('aria-hidden','false');
+        $('#video').play().catch(()=>{});
+        $('#video-close').focus();
+    }
+    function closeVideo(){
+        $('#video-modal').classList.remove('open'); $('#video-modal').setAttribute('aria-hidden','true');
+        $('#video').pause(); $('#video').removeAttribute('src'); $('#video').load();
+    }
+    $('#video-close').addEventListener('click', closeVideo);
+    $('#video-modal').addEventListener('click', e => { if (e.target.id==='video-modal') closeVideo(); });
+    document.addEventListener('keydown', e => { if (e.key==='Escape' && $('#video-modal').classList.contains('open')) closeVideo(); });
+
+    async function loadCameras(){
+        try {
+            const r = await fetch('/api/events/cameras', {credentials:'same-origin'});
+            if (!r.ok) return;
+            const data = await r.json();
+            (data.cameras || []).forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id; opt.textContent = c.name + ' (' + c.id + ')';
+                $('#f-camera').appendChild(opt);
+            });
+        } catch(e) {}
+    }
+
+    $('#refresh').addEventListener('click', () => { loadStatus(); loadClips(); });
+    ['#f-camera','#f-category','#f-date'].forEach(s => $(s).addEventListener('change', loadClips));
+    loadStatus(); loadCameras(); loadClips();
+    setInterval(loadStatus, 15000);
+})();
+</script>
+</body>
+</html>

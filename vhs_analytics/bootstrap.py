@@ -19,6 +19,7 @@ from pathlib import Path
 
 import yaml
 
+from .archive import ArchiveManager
 from .config import load_config
 from .event_writer import EventWriter
 from .manager import AnalyticsManager
@@ -57,6 +58,18 @@ def _load_root_section(config_path: str, section: str) -> dict:
         return {}
 
 
+def _load_root_streams(config_path: str) -> list:
+    """Потоки нужны архиву для режима непрерывной записи."""
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+        streams = raw.get("streams") if isinstance(raw, dict) else None
+        return [s for s in streams if isinstance(s, dict)] if isinstance(streams, list) else []
+    except Exception:
+        log.exception("DIAG: не удалось прочитать streams для архива")
+        return []
+
+
 def build_manager(
     config_path: str = "viewer_config.yaml",
     log_dir: str | Path = "logs",
@@ -70,58 +83,21 @@ def build_manager(
     # --- EventWriter ---
     writer = EventWriter(log_dir=log_dir)
 
-    # --- RelayManager ---
-    log.info("DIAG: ========== RelayManager ==========")
-    relay_cfg = _load_root_section(config_path, "relay")
+    # --- Видеоархив (Viewer) ---
+    archive_cfg = _load_root_section(config_path, "archive")
+    archive_mgr = ArchiveManager(
+        archive_cfg,
+        base_dir=Path(config_path).resolve().parent,
+        streams=_load_root_streams(config_path),
+        log_dir=log_dir,
+    )
+
+    # Реле и сообщения перенесены в VHS-Security.
+    # Viewer оставлен источником событий/аналитики и не выполняет реакции.
     relay_mgr = None
-    if relay_cfg and (relay_cfg.get("relays") or relay_cfg.get("url_open")):
-        try:
-            relay_mgr = RelayManager(relay_cfg, log_dir=log_dir)
-            n = len(relay_mgr.relays)
-            en = sum(1 for r in relay_mgr.relays.values() if r.enabled)
-            log.info("DIAG: RelayManager создан: реле=%d, включено=%d", n, en)
-        except Exception:
-            log.exception("DIAG: RelayManager не создан")
-            relay_mgr = None
-    else:
-        log.info("DIAG: relay не настроен — RelayManager не создан")
-
-    # --- MessageManager (новый) ---
-    log.info("DIAG: ========== MessageManager ==========")
-    messaging_cfg = _load_root_section(config_path, "messaging")
-    msg_mgr: MessageManager | None = None
-    if (
-        messaging_cfg
-        and isinstance(messaging_cfg.get("channels"), list)
-        and messaging_cfg["channels"]
-    ):
-        try:
-            msg_mgr = MessageManager(messaging_cfg, log_dir=log_dir)
-            n = len(msg_mgr.channels)
-            en = sum(1 for c in msg_mgr.channels.values() if c.enabled)
-            log.info("DIAG: MessageManager создан: каналов=%d, включено=%d", n, en)
-        except Exception:
-            log.exception("DIAG: MessageManager не создан")
-            msg_mgr = None
-    else:
-        log.info("DIAG: messaging.channels[] пусто — MessageManager не создан")
-
-    # --- Старый TelegramNotifier как fallback ---
+    msg_mgr = None
     legacy_notifier = None
-    if msg_mgr is None:
-        tg = _load_root_section(config_path, "telegram")
-        if tg.get("enabled") and tg.get("token") and tg.get("chat_id"):
-            try:
-                from .notifier import TelegramNotifier
-
-                legacy_notifier = TelegramNotifier(tg["token"], tg["chat_id"])
-                log.info("DIAG: legacy TelegramNotifier включён (fallback)")
-            except Exception:
-                log.exception("DIAG: legacy TelegramNotifier не создан")
-        else:
-            log.info("DIAG: legacy telegram не настроен")
-
-    log.info("DIAG: ===================================")
+    log.info("Reactions moved to VHS-Security; relay/messaging disabled in Viewer")
 
     def on_event(stream: dict, detection: dict, frame=None):
         category = detection.get("category", "object")
@@ -141,7 +117,14 @@ def build_manager(
             except Exception:
                 log.exception("EventWriter.add failed")
 
-        # 2. Relay — только для номеров
+        # 2. Видеоархив — независимо от реакций Security.
+        if archive_mgr is not None:
+            try:
+                archive_mgr.on_event(stream, detection)
+            except Exception:
+                log.exception("ArchiveManager.on_event failed")
+
+        # 3. Relay — только для номеров
         if relay_mgr is not None and category == "plate" and plate:
             try:
                 triggered = relay_mgr.check_all(
@@ -207,6 +190,7 @@ def build_manager(
         config_path=config_path,
     )
     manager._writer = writer
+    manager._archive = archive_mgr
     manager._relay = relay_mgr
     manager._messaging = msg_mgr
     return manager
@@ -215,7 +199,7 @@ def build_manager(
 def stop_manager(manager):
     if manager is None:
         return
-    for attr in ("_relay", "_messaging"):
+    for attr in ("_archive", "_relay", "_messaging"):
         svc = getattr(manager, attr, None)
         if svc is not None and hasattr(svc, "stop"):
             try:

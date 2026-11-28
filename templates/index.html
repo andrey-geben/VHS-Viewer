@@ -510,6 +510,72 @@
             + Добавить поток вручную
         </button>
 
+        <!-- ============ ВИДЕОАРХИВ ============ -->
+        {% if user and user.role == 'admin' %}
+        <h3>Видеоархив</h3>
+        <p class="hint">
+            Viewer может писать клипы по событиям аналитики (люди, машины, номера, животные)
+            или вести непрерывную запись сегментами. Старые файлы удаляются при превышении
+            заданного объёма.
+        </p>
+
+        <div style="margin-bottom:10px">
+            <label style="display:inline-flex; align-items:center; gap:8px; color:#e8e8e8; font-size:0.95em; margin:0">
+                <input type="checkbox" id="archive-enabled">
+                Включить видеоархив
+            </label>
+        </div>
+
+        <div class="form-row" style="margin-bottom:8px">
+            <label style="min-width:170px">Режим записи</label>
+            <select id="archive-mode" style="flex:1">
+                <option value="events">По событиям</option>
+                <option value="always">Непрерывно</option>
+                <option value="off">Выключен</option>
+            </select>
+        </div>
+
+        <div class="form-row" style="margin-bottom:8px">
+            <label style="min-width:170px">Папка хранения</label>
+            <input type="text" id="archive-path" style="flex:1"
+                   placeholder="по умолчанию: папка Viewer\archive">
+        </div>
+
+        <div class="form-row" style="margin-bottom:8px">
+            <label style="min-width:170px">Объём хранилища, ГБ</label>
+            <input type="number" id="archive-quota" min="0" max="100000" step="1" style="width:130px" value="50">
+            <span class="muted" style="font-size:0.85em">0 — без ограничения</span>
+        </div>
+
+        <div class="form-row" style="margin-bottom:8px">
+            <label style="min-width:170px">Длина клипа, сек</label>
+            <input type="number" id="archive-clip-seconds" min="1" max="3600" style="width:110px" value="15">
+            <label style="min-width:120px; margin-left:10px">Cooldown, сек</label>
+            <input type="number" id="archive-cooldown" min="0" max="86400" style="width:110px" value="30">
+        </div>
+
+        <div style="margin-bottom:8px">
+            <label style="display:block; color:#8b96a5; font-size:0.9em; margin-bottom:5px">Писать события:</label>
+            <label style="display:inline-flex; align-items:center; gap:5px; margin-right:12px"><input type="checkbox" class="archive-type" value="plate" checked> Номера</label>
+            <label style="display:inline-flex; align-items:center; gap:5px; margin-right:12px"><input type="checkbox" class="archive-type" value="person" checked> Люди</label>
+            <label style="display:inline-flex; align-items:center; gap:5px; margin-right:12px"><input type="checkbox" class="archive-type" value="vehicle" checked> Машины</label>
+            <label style="display:inline-flex; align-items:center; gap:5px; margin-right:12px"><input type="checkbox" class="archive-type" value="animal" checked> Животные</label>
+        </div>
+
+        <div class="form-row" style="margin-bottom:8px">
+            <label style="min-width:170px">RTSP-порт Streamer</label>
+            <input type="number" id="archive-rtsp-port" min="1" max="65535" style="width:110px" value="8554">
+            <label style="min-width:90px; margin-left:10px">FFmpeg</label>
+            <input type="text" id="archive-ffmpeg" style="flex:1" placeholder="ffmpeg в PATH или полный путь">
+        </div>
+
+        <div class="form-row" style="margin-bottom:8px">
+            <label style="min-width:170px">Статус</label>
+            <span id="archive-status" class="muted" style="font-size:0.85em">—</span>
+            <button class="btn-sm secondary" type="button" onclick="refreshArchiveStatus()">Проверить</button>
+        </div>
+        {% endif %}
+
         <!-- ============ ВНУТРЕННИЙ API ============ -->
         {% if user and user.role == 'admin' %}
         <h3>Внутренний API и ключи</h3>
@@ -1253,6 +1319,22 @@ function openSettings() {
     document.getElementById('cfg-title').value = currentConfig.title || '';
     document.getElementById('cfg-layout').value = currentConfig.layout || '2x2';
 
+    const archive = currentConfig.archive || {};
+    const archiveEnabled = document.getElementById('archive-enabled');
+    if (archiveEnabled) {
+        archiveEnabled.checked = !!archive.enabled;
+        document.getElementById('archive-mode').value = archive.mode || 'events';
+        document.getElementById('archive-path').value = archive.path || '';
+        document.getElementById('archive-quota').value = archive.quota_gb ?? 50;
+        document.getElementById('archive-clip-seconds').value = archive.clip_seconds ?? 15;
+        document.getElementById('archive-cooldown').value = archive.cooldown_sec ?? 30;
+        document.getElementById('archive-rtsp-port').value = archive.rtsp_port ?? 8554;
+        document.getElementById('archive-ffmpeg').value = archive.ffmpeg_path || '';
+        const types = archive.event_types || ['plate','person','vehicle','animal'];
+        document.querySelectorAll('.archive-type').forEach(cb => { cb.checked = types.includes(cb.value); });
+        refreshArchiveStatus();
+    }
+
     const srvTbody = document.querySelector('#servers-table tbody');
     srvTbody.innerHTML = '';
     (currentConfig.servers || []).forEach(s => addServerRow(s.name, s.url, s.api_key));
@@ -1284,6 +1366,24 @@ function closeSettings() {
     document.getElementById('settings-modal').classList.remove('active');
 }
 
+async function refreshArchiveStatus() {
+    const el = document.getElementById('archive-status');
+    if (!el) return;
+    el.textContent = 'проверка…';
+    try {
+        const response = await fetch('/api/archive/status', {credentials: 'same-origin'});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+        if (!data.path) {
+            el.textContent = data.error || 'архив не запущен';
+            return;
+        }
+        el.textContent = `${data.mode} · ${data.path} · занято ${data.used_gb} ГБ из ${data.quota_gb} ГБ · свободно ${data.free_gb} ГБ`;
+    } catch (error) {
+        el.textContent = 'ошибка: ' + error.message;
+    }
+}
+
 async function saveSettings() {
     const payload = {
         title: (document.getElementById('cfg-title').value || '').trim() || 'VHS-Viewer',
@@ -1295,6 +1395,19 @@ async function saveSettings() {
             ingest_key: (document.getElementById('integration-ingest-key') || {}).value || '',
         },
     };
+    if (document.getElementById('archive-enabled')) {
+        payload.archive = {
+            enabled: document.getElementById('archive-enabled').checked,
+            mode: document.getElementById('archive-mode').value || 'events',
+            path: (document.getElementById('archive-path').value || '').trim(),
+            quota_gb: Number(document.getElementById('archive-quota').value || 0),
+            clip_seconds: Number(document.getElementById('archive-clip-seconds').value || 15),
+            cooldown_sec: Number(document.getElementById('archive-cooldown').value || 0),
+            rtsp_port: Number(document.getElementById('archive-rtsp-port').value || 8554),
+            ffmpeg_path: (document.getElementById('archive-ffmpeg').value || '').trim(),
+            event_types: [...document.querySelectorAll('.archive-type:checked')].map(cb => cb.value),
+        };
+    }
 
     // Защита: не даём сохранить пустой список потоков, если до этого он был
     const prevStreams = (currentConfig.streams || []);
